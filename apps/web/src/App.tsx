@@ -54,6 +54,7 @@ import {
   IconSun,
   IconTrophy,
   IconTrash,
+  IconTerminal2,
   IconUserPlus,
   IconUserStar,
   IconUsers,
@@ -70,10 +71,44 @@ const API_BASE = `${API_ORIGIN}/api/v1`;
 const STORAGE_KEY = "shmmf_auth_session";
 const THEME_KEY = "shmmf_theme";
 const LANGUAGE_KEY = "shmmf_language";
+const BRAND_THEME_KEY = "shmmf_brand_theme";
 
 type ThemeMode = "light" | "dark";
 type Language = "en" | "am";
+type BrandThemeId = "violet" | "blue" | "emerald" | "crimson" | "amber";
 type Section = "dashboard" | "shareholders" | "candidates" | "agendas" | "attendance" | "votes" | "audit" | "settings";
+
+const BRAND_THEMES: Array<{ id: BrandThemeId; label: string; primary: string; soft: string; border: string; hover: string }> = [
+  { id: "violet", label: "Violet", primary: "#7367f0", soft: "#f1efff", border: "#c8c1ff", hover: "#6659e6" },
+  { id: "blue", label: "Blue", primary: "#1e88e5", soft: "#e8f4ff", border: "#b6ddff", hover: "#1976d2" },
+  { id: "emerald", label: "Emerald", primary: "#16a34a", soft: "#e9f9ef", border: "#b8ebca", hover: "#15803d" },
+  { id: "crimson", label: "Crimson", primary: "#e11d48", soft: "#ffeaf0", border: "#ffc1cf", hover: "#be123c" },
+  { id: "amber", label: "Amber", primary: "#d97706", soft: "#fff3e6", border: "#ffd9ad", hover: "#b45309" },
+];
+
+function BrandThemeOption({ label, color }: { label: string; color: string }) {
+  return (
+    <Space size={8}>
+      <span
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: 999,
+          background: color,
+          border: "1px solid rgba(0,0,0,0.15)",
+          display: "inline-block",
+        }}
+      />
+      <span>{label}</span>
+    </Space>
+  );
+}
+
+function formatNumber(value: number | string): string {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return String(value);
+  return new Intl.NumberFormat().format(numeric);
+}
 
 const i18n: Record<string, { en: string; am: string }> = {
   Dashboard: { en: "Dashboard", am: "ዳሽቦርድ" },
@@ -308,6 +343,9 @@ function App() {
   const [rememberMe, setRememberMe] = useState(true);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => (localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"));
   const [language, setLanguage] = useState<Language>(() => (localStorage.getItem(LANGUAGE_KEY) === "am" ? "am" : "en"));
+  const [brandThemeId, setBrandThemeId] = useState<BrandThemeId>(
+    () => (localStorage.getItem(BRAND_THEME_KEY) as BrandThemeId) || "violet"
+  );
   const [session, setSession] = useState<LoginResponse | null>(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -371,6 +409,7 @@ function App() {
   const canApproveVote = role === "SUPER_ADMIN" || role === "VOTE_CHECKER";
   const canViewAudit = role === "SUPER_ADMIN";
   const t = (text: string): string => (i18n[text] ? i18n[text][language] : text);
+  const activeBrandTheme = BRAND_THEMES.find((theme) => theme.id === brandThemeId) ?? BRAND_THEMES[0];
 
   const loginMutation = useMutation({
     mutationFn: ({ user, pass }: { user: string; pass: string }) => login(user, pass),
@@ -750,6 +789,14 @@ function App() {
     localStorage.setItem(LANGUAGE_KEY, language);
   }, [language]);
   useEffect(() => {
+    localStorage.setItem(BRAND_THEME_KEY, brandThemeId);
+    const root = document.documentElement;
+    root.style.setProperty("--brand-primary", activeBrandTheme.primary);
+    root.style.setProperty("--brand-primary-soft", activeBrandTheme.soft);
+    root.style.setProperty("--brand-primary-border", activeBrandTheme.border);
+    root.style.setProperty("--brand-primary-hover", activeBrandTheme.hover);
+  }, [activeBrandTheme, brandThemeId]);
+  useEffect(() => {
     if (!token) return;
     const socket = io(API_ORIGIN);
     socket.on("dashboard:refresh", refreshAll);
@@ -822,7 +869,7 @@ function App() {
     {
       key: "shareholders-total",
       title: "Total Shareholders",
-      value: `${dashboard.data?.shareholders.total ?? 0}`,
+      value: formatNumber(dashboard.data?.shareholders.total ?? 0),
       meta: "All registered shareholders",
       icon: <IconUsers size={18} />,
       tone: "success",
@@ -830,7 +877,7 @@ function App() {
     {
       key: "shares-total",
       title: "Total Shares",
-      value: `${dashboard.data?.shareholders.sharesTotal ?? 0}`,
+      value: formatNumber(dashboard.data?.shareholders.sharesTotal ?? 0),
       meta: "Combined ownership shares",
       icon: <IconDatabaseImport size={18} />,
       tone: "primary",
@@ -838,7 +885,7 @@ function App() {
     {
       key: "shareholders-influential",
       title: "Influential Shareholders",
-      value: `${dashboard.data?.shareholders.highPower ?? 0}`,
+      value: formatNumber(dashboard.data?.shareholders.highPower ?? 0),
       meta: "High shares",
       icon: <IconShieldCheck size={18} />,
       tone: "warning",
@@ -846,7 +893,7 @@ function App() {
     {
       key: "shareholders-non-influential",
       title: "Non-Influential Shareholders",
-      value: `${dashboard.data?.shareholders.lowPower ?? 0}`,
+      value: formatNumber(dashboard.data?.shareholders.lowPower ?? 0),
       meta: "Low shares",
       icon: <IconCheckupList size={18} />,
       tone: "neutral",
@@ -914,7 +961,7 @@ function App() {
       <ConfigProvider
         theme={{
           algorithm: themeMode === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-          token: { colorPrimary: "#7367f0", borderRadius: 8 },
+          token: { colorPrimary: activeBrandTheme.primary, borderRadius: 8 },
         }}
       >
         <div className={`vx-login-page ${themeMode === "dark" ? "is-dark" : ""}`}>
@@ -932,17 +979,30 @@ function App() {
                 </div>
               </div>
               <div className="vx-login-form-wrap">
-                <Space className="vx-login-form-head">
+                <div className="vx-login-form-head">
                   <Title level={4} style={{ margin: 0 }}>{t("Welcome back")}</Title>
-                  <Select
-                    value={language}
-                    style={{ width: 140 }}
-                    onChange={(value) => setLanguage(value as Language)}
-                    options={[
-                      { value: "en", label: "English" },
-                      { value: "am", label: "አማርኛ" },
-                    ]}
-                  />
+                  <Space wrap>
+                    <Select
+                      value={language}
+                      style={{ width: 140 }}
+                      onChange={(value) => setLanguage(value as Language)}
+                      options={[
+                        { value: "en", label: "English" },
+                        { value: "am", label: "አማርኛ" },
+                      ]}
+                    />
+                    <Select
+                      value={brandThemeId}
+                      style={{ width: 170 }}
+                      onChange={(value) => setBrandThemeId(value as BrandThemeId)}
+                      options={BRAND_THEMES.map((theme) => ({
+                        value: theme.id,
+                        label: <BrandThemeOption label={theme.label} color={theme.primary} />,
+                      }))}
+                    />
+                  </Space>
+                </div>
+                <Space style={{ marginBottom: 18 }}>
                   <Switch
                     checkedChildren="Dark"
                     unCheckedChildren="Light"
@@ -976,14 +1036,16 @@ function App() {
     <ConfigProvider
       theme={{
         algorithm: themeMode === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-        token: { colorPrimary: "#7367f0", borderRadius: 8 },
+        token: { colorPrimary: activeBrandTheme.primary, borderRadius: 8 },
       }}
     >
       <Layout className={`vx-app ${themeMode === "dark" ? "is-dark" : ""}`}>
         <Sider width={264} className="vx-sider">
           <div className="vx-brand">
-            <Title level={5} style={{ color: "#fff", margin: 0 }}>SHMMF Console</Title>
-            <Text className="vx-brand-role">Role: {role}</Text>
+            <Space size={8}>
+              <IconTerminal2 size={18} color="#ffffff" />
+              <Title level={5} style={{ color: "#fff", margin: 0 }}>SHMMF Console</Title>
+            </Space>
           </div>
           <Menu
             theme="dark"
@@ -1008,6 +1070,16 @@ function App() {
                   { value: "en", label: "English" },
                   { value: "am", label: "አማርኛ" },
                 ]}
+              />
+              <Select
+                value={brandThemeId}
+                size="small"
+                style={{ width: 150 }}
+                onChange={(value) => setBrandThemeId(value as BrandThemeId)}
+                options={BRAND_THEMES.map((theme) => ({
+                  value: theme.id,
+                  label: <BrandThemeOption label={theme.label} color={theme.primary} />,
+                }))}
               />
               <Switch
                 checked={themeMode === "dark"}
@@ -1111,12 +1183,12 @@ function App() {
                           <div key={row.candidateId} className="vx-vote-row">
                             <div className="vx-vote-label">
                               <strong>{row.candidateName}</strong>
-                              <span>{row.voteCount} votes</span>
+                              <span>{formatNumber(row.voteCount)} votes</span>
                             </div>
                             <div className="vx-vote-bar-track">
                               <div className="vx-vote-bar-fill" style={{ width: `${widthPercent}%` }} />
                             </div>
-                            <div className="vx-vote-value">{row.totalShares.toLocaleString()} shares</div>
+                            <div className="vx-vote-value">{formatNumber(row.totalShares)} shares</div>
                           </div>
                         );
                       })}
@@ -1168,7 +1240,7 @@ function App() {
                   columns={[
                     { title: "ID", dataIndex: "id" },
                     { title: "Name", dataIndex: "fullNameEn" },
-                    { title: "Shares", dataIndex: "shares" },
+                    { title: "Shares", dataIndex: "shares", render: (value: number) => formatNumber(value) },
                     {
                       title: "Classification",
                       dataIndex: "isHighPower",
@@ -1254,7 +1326,7 @@ function App() {
                         onChange={handleNominationVoterChange}
                         options={(candidateNominationEligibleVoters.data ?? []).map((s) => ({
                           value: s.id,
-                          label: `${s.fullNameEn} (${s.shares.toLocaleString()} shares)`,
+                          label: `${s.fullNameEn} (${formatNumber(s.shares)} shares)`,
                         }))}
                       />
                       <Select
@@ -1266,7 +1338,7 @@ function App() {
                         onChange={setNominationNomineeShareholderId}
                         options={selectableNomineeShareholders.map((s) => ({
                           value: s.id,
-                          label: `${s.fullNameEn} (${s.shares.toLocaleString()} shares)`,
+                          label: `${s.fullNameEn} (${formatNumber(s.shares)} shares)`,
                         }))}
                       />
                       <Button
@@ -1296,8 +1368,8 @@ function App() {
                       pagination={{ pageSize: 6 }}
                       columns={[
                         { title: "Nominee", dataIndex: "nomineeName" },
-                        { title: "Weighted Shares", dataIndex: "totalShares", render: (value: number) => value.toLocaleString() },
-                        { title: "Vote Count", dataIndex: "voteCount" },
+                        { title: "Weighted Shares", dataIndex: "totalShares", render: (value: number) => formatNumber(value) },
+                        { title: "Vote Count", dataIndex: "voteCount", render: (value: number) => formatNumber(value) },
                       ]}
                     />
                     {isSuperAdmin && (
@@ -1311,7 +1383,7 @@ function App() {
                           onChange={setPromoteNomineeShareholderId}
                           options={(candidateNominationResults.data ?? [])
                             .filter((row) => row.totalShares > 0)
-                            .map((row) => ({ value: row.nomineeShareholderId, label: `${row.nomineeName} (${row.totalShares.toLocaleString()} shares)` }))}
+                            .map((row) => ({ value: row.nomineeShareholderId, label: `${row.nomineeName} (${formatNumber(row.totalShares)} shares)` }))}
                         />
                         <Input
                           style={{ minWidth: 220 }}
@@ -1562,7 +1634,7 @@ function App() {
                       Only shareholders with approved attendance are eligible to vote and appear in the voter dropdown.
                     </Text>
                     <Text type="secondary">
-                      Eligible voters: {eligibleVoters.length} / {shareholders.data?.length ?? 0}
+                      Eligible voters: {formatNumber(eligibleVoters.length)} / {formatNumber(shareholders.data?.length ?? 0)}
                     </Text>
                   </Space>
                 </Card>

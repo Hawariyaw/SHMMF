@@ -6,6 +6,10 @@ body {
 
 :root {
   font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --brand-primary: #7367f0;
+  --brand-primary-soft: #f1efff;
+  --brand-primary-border: #c8c1ff;
+  --brand-primary-hover: #6659e6;
 }
 
 * {
@@ -103,7 +107,11 @@ body {
 
 .vx-login-form-head {
   width: 100%;
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 18px;
 }
 
@@ -159,7 +167,7 @@ body {
 }
 
 .vx-menu .ant-menu-item-selected {
-  background: #7367f0 !important;
+  background: var(--brand-primary) !important;
 }
 
 .vx-main-layout {
@@ -270,8 +278,8 @@ body {
 }
 
 .vx-agenda-item.is-active {
-  background: #f1efff;
-  border-color: #c8c1ff;
+  background: var(--brand-primary-soft);
+  border-color: var(--brand-primary-border);
 }
 
 .vx-vote-label {
@@ -294,7 +302,7 @@ body {
 .vx-vote-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #7367f0, #9a90ff);
+  background: linear-gradient(90deg, var(--brand-primary), color-mix(in srgb, var(--brand-primary) 70%, white));
 }
 
 .vx-vote-value {
@@ -319,7 +327,7 @@ body {
   inset: 0 auto auto 0;
   height: 3px;
   width: 100%;
-  background: #7367f0;
+  background: var(--brand-primary);
 }
 
 .vx-kpi-success::before {
@@ -331,7 +339,7 @@ body {
 }
 
 .vx-kpi-primary::before {
-  background: linear-gradient(90deg, #7367f0, #8c82f5);
+  background: linear-gradient(90deg, var(--brand-primary), color-mix(in srgb, var(--brand-primary) 72%, white));
 }
 
 .vx-kpi-neutral::before {
@@ -365,8 +373,8 @@ body {
   border-radius: 10px;
   display: grid;
   place-items: center;
-  color: #7367f0;
-  background: #f1efff;
+  color: var(--brand-primary);
+  background: var(--brand-primary-soft);
   font-size: 16px;
 }
 
@@ -387,11 +395,11 @@ body {
 }
 
 .ant-btn-primary {
-  background: #7367f0 !important;
+  background: var(--brand-primary) !important;
 }
 
 .ant-btn-primary:hover {
-  background: #6659e6 !important;
+  background: var(--brand-primary-hover) !important;
 }
 
 .is-dark.vx-login-page,
