@@ -1,0 +1,27 @@
+{
+  "name": "@shmmf/shared",
+  "version": "1.0.0",
+  "description": "Shared domain contracts for SHMMF",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

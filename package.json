@@ -1,0 +1,22 @@
+{
+  "name": "shmmf",
+  "version": "1.0.0",
+  "description": "Shareholders Meeting Management Framework monorepo",
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "dev": "npm run dev -w @shmmf/web",
+    "dev:api": "npm run dev -w @shmmf/api",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}
