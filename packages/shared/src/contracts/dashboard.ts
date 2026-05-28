@@ -14,6 +14,12 @@ export interface DashboardSnapshot {
   voting: {
     totalVotes: number;
     pendingApprovals: number;
+    byCandidate: Array<{
+      candidateId: string;
+      candidateName: string;
+      totalShares: number;
+      voteCount: number;
+    }>;
   };
   agenda: {
     activeTitle: string;

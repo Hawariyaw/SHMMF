@@ -1,26 +1,95 @@
-import { BarChart3, Clock3, LayoutDashboard, ShieldCheck, Users, Vote } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DashboardSnapshot, Role } from "@shmmf/shared";
-import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  App as AntdApp,
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  ConfigProvider,
+  Descriptions,
+  Dropdown,
+  Form,
+  Input,
+  Layout,
+  Menu,
+  Modal,
+  Progress,
+  Select,
+  Space,
+  Switch,
+  Table,
+  Tag,
+  Typography,
+  Upload,
+  theme as antdTheme,
+} from "antd";
+import type { UploadProps } from "antd";
+import { useCallback, useEffect, useState } from "react";
 import { io } from "socket.io-client";
+import {
+  IconCheckupList,
+  IconCloudUpload,
+  IconClockCheck,
+  IconDatabaseImport,
+  IconDownload,
+  IconEdit,
+  IconBell,
+  IconFileSpreadsheet,
+  IconFileTypeCsv,
+  IconFileTypePdf,
+  IconLanguage,
+  IconLayoutDashboard,
+  IconLayoutGrid,
+  IconLogout,
+  IconMoon,
+  IconPodium,
+  IconReceipt2,
+  IconShieldCheck,
+  IconSettings,
+  IconSun,
+  IconTrophy,
+  IconTrash,
+  IconUserPlus,
+  IconUserStar,
+  IconUsers,
+} from "@tabler/icons-react";
+import * as XLSX from "xlsx";
+
+const { Header, Content, Sider } = Layout;
+const { Title, Text } = Typography;
 
 const API_BASE = "http://localhost:4000/api/v1";
-type Section = "dashboard" | "shareholders" | "attendance" | "votes" | "audit";
+const STORAGE_KEY = "shmmf_auth_session";
+const THEME_KEY = "shmmf_theme";
+
+type ThemeMode = "light" | "dark";
+type Section = "dashboard" | "shareholders" | "candidates" | "attendance" | "votes" | "audit" | "settings";
+
+interface LoginResponse {
+  token: string;
+  role: Role;
+  username?: string;
+}
+interface ConfigResponse {
+  attendanceMakerCheckerEnabled: boolean;
+  votingMakerCheckerEnabled: boolean;
+  influentialAutoClassificationEnabled: boolean;
+  influentialShareThreshold: number;
+}
 interface ShareholderRow {
   id: string;
   fullNameEn: string;
   shares: number;
   isHighPower: boolean;
 }
-
 interface AttendanceRow {
   id: string;
   shareholder_id: string;
   status: string;
   timestamp: string;
-  notes?: string;
 }
-
 interface VoteRow {
   id: string;
   shareholder_id: string;
@@ -29,26 +98,43 @@ interface VoteRow {
   status: string;
   timestamp: string;
 }
-
+interface CandidateRow {
+  id: string;
+  shareholder_id: string | null;
+  name: string;
+  position: string;
+}
+interface CandidateNominationResultRow {
+  nomineeShareholderId: string;
+  nomineeName: string;
+  totalShares: number;
+  voteCount: number;
+}
+interface ConfirmDialogState {
+  open: boolean;
+  title: string;
+  description: string;
+  confirmText?: string;
+  danger?: boolean;
+  onConfirm?: () => void;
+}
 interface AuditRow {
   id: string;
+  user_id: string | null;
+  actor_username: string | null;
   action_type: string;
   module: string;
+  previous_value: unknown;
+  new_value: unknown;
   timestamp: string;
 }
-
-interface LoginResponse {
-  token: string;
-  role: Role;
+interface BulkRowInput {
+  fullNameEn: string;
+  shares: number;
+  isHighPower?: boolean;
+  fullNameAm?: string;
+  contactInfo?: string;
 }
-interface ConfigResponse {
-  attendanceMakerCheckerEnabled: boolean;
-  votingMakerCheckerEnabled: boolean;
-  influentialAutoClassificationEnabled: boolean;
-  influentialShareThreshold: number;
-}
-
-const STORAGE_KEY = "shmmf_auth_session";
 
 async function login(username: string, password: string): Promise<LoginResponse> {
   const res = await fetch(`${API_BASE}/auth/login`, {
@@ -59,7 +145,6 @@ async function login(username: string, password: string): Promise<LoginResponse>
   if (!res.ok) throw new Error("Unable to login");
   return (await res.json()) as LoginResponse;
 }
-
 async function getDashboard(token: string): Promise<DashboardSnapshot> {
   const res = await fetch(`${API_BASE}/dashboard/snapshot`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -67,7 +152,6 @@ async function getDashboard(token: string): Promise<DashboardSnapshot> {
   if (!res.ok) throw new Error("Unable to load dashboard snapshot");
   return (await res.json()) as DashboardSnapshot;
 }
-
 async function fetchList<T>(token: string, path: string): Promise<T[]> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -75,25 +159,21 @@ async function fetchList<T>(token: string, path: string): Promise<T[]> {
   if (!res.ok) throw new Error(`Unable to fetch ${path}`);
   return (await res.json()) as T[];
 }
-
 async function fetchConfig(token: string): Promise<ConfigResponse> {
-  const res = await fetch(`${API_BASE}/config`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(`${API_BASE}/config`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!res.ok) throw new Error("Unable to fetch configuration");
   return (await res.json()) as ConfigResponse;
 }
-
 async function postAuthorized(token: string, path: string, body: unknown): Promise<void> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Unable to POST ${path}`);
 }
-
 async function deleteAuthorized(token: string, path: string): Promise<void> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "DELETE",
@@ -101,8 +181,7 @@ async function deleteAuthorized(token: string, path: string): Promise<void> {
   });
   if (!res.ok) throw new Error(`Unable to DELETE ${path}`);
 }
-
-async function downloadReport(token: string, path: string, fileName: string): Promise<void> {
+async function downloadFile(token: string, path: string, fileName: string): Promise<void> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -120,22 +199,13 @@ async function downloadReport(token: string, path: string, fileName: string): Pr
 
 function App() {
   const queryClient = useQueryClient();
+  const { message } = AntdApp.useApp();
+
   const [section, setSection] = useState<Section>("dashboard");
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin1234");
   const [rememberMe, setRememberMe] = useState(true);
-  const [shareholderName, setShareholderName] = useState("");
-  const [shareholderShares, setShareholderShares] = useState("100");
-  const [manualInfluentialFlag, setManualInfluentialFlag] = useState(false);
-  const [editingShareholderId, setEditingShareholderId] = useState("");
-  const [editingShareholderName, setEditingShareholderName] = useState("");
-  const [editingShareholderShares, setEditingShareholderShares] = useState("100");
-  const [editingInfluentialFlag, setEditingInfluentialFlag] = useState(false);
-  const [autoClassificationEnabled, setAutoClassificationEnabled] = useState(false);
-  const [influentialThreshold, setInfluentialThreshold] = useState("100000");
-  const [selectedShareholder, setSelectedShareholder] = useState("");
-  const [selectedAttendance, setSelectedAttendance] = useState("");
-  const [selectedVote, setSelectedVote] = useState("");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => (localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"));
   const [session, setSession] = useState<LoginResponse | null>(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -145,20 +215,45 @@ function App() {
       return null;
     }
   });
-  const loginMutation = useMutation({
-    mutationFn: ({ user, pass }: { user: string; pass: string }) => login(user, pass),
-    onSuccess: (data) => {
-      setSession(data);
-      if (rememberMe) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-    },
+
+  const [shareholderName, setShareholderName] = useState("");
+  const [shareholderShares, setShareholderShares] = useState("100");
+  const [manualInfluentialFlag, setManualInfluentialFlag] = useState(false);
+  const [editingShareholderId, setEditingShareholderId] = useState("");
+  const [editingShareholderName, setEditingShareholderName] = useState("");
+  const [editingShareholderShares, setEditingShareholderShares] = useState("100");
+  const [editingInfluentialFlag, setEditingInfluentialFlag] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showCandidateModal, setShowCandidateModal] = useState(false);
+  const [selectedShareholder, setSelectedShareholder] = useState("");
+  const [selectedCandidate, setSelectedCandidate] = useState("");
+  const [selectedAttendance, setSelectedAttendance] = useState("");
+  const [selectedVote, setSelectedVote] = useState("");
+  const [candidateShareholderId, setCandidateShareholderId] = useState("");
+  const [candidatePosition, setCandidatePosition] = useState("Board Member");
+  const [nominationVoterShareholderId, setNominationVoterShareholderId] = useState("");
+  const [nominationNomineeShareholderId, setNominationNomineeShareholderId] = useState("");
+  const [promoteNomineeShareholderId, setPromoteNomineeShareholderId] = useState("");
+  const [promoteCandidatePosition, setPromoteCandidatePosition] = useState("Board Member");
+  const [attendanceMakerCheckerEnabled, setAttendanceMakerCheckerEnabled] = useState<boolean | null>(null);
+  const [votingMakerCheckerEnabled, setVotingMakerCheckerEnabled] = useState<boolean | null>(null);
+  const [autoClassificationEnabled, setAutoClassificationEnabled] = useState<boolean | null>(null);
+  const [influentialThreshold, setInfluentialThreshold] = useState("");
+  const [bulkRowsPreview, setBulkRowsPreview] = useState<BulkRowInput[]>([]);
+  const [showResetSessionModal, setShowResetSessionModal] = useState(false);
+  const [resetClearCandidates, setResetClearCandidates] = useState(false);
+  const [resetClearAuditLogs, setResetClearAuditLogs] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
+    open: false,
+    title: "",
+    description: "",
   });
-  const auth = session;
-  const token = auth?.token;
-  const role = auth?.role;
+
+  const token = session?.token;
+  const role = session?.role;
+  const activeUsername = session?.username || username || role || "User";
+
   const isSuperAdmin = role === "SUPER_ADMIN";
   const canMarkAttendance = role === "SUPER_ADMIN" || role === "ATTENDANCE_MAKER";
   const canApproveAttendance = role === "SUPER_ADMIN" || role === "ATTENDANCE_CHECKER";
@@ -166,19 +261,28 @@ function App() {
   const canApproveVote = role === "SUPER_ADMIN" || role === "VOTE_CHECKER";
   const canViewAudit = role === "SUPER_ADMIN";
 
+  const loginMutation = useMutation({
+    mutationFn: ({ user, pass }: { user: string; pass: string }) => login(user, pass),
+    onSuccess: (data) => {
+      const nextSession = { ...data, username };
+      setSession(nextSession);
+      if (rememberMe) localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
+      else localStorage.removeItem(STORAGE_KEY);
+    },
+    onError: () => message.error("Login failed. Check credentials."),
+  });
+
   const dashboard = useQuery({
     queryKey: ["dashboard", token],
     queryFn: () => getDashboard(token!),
     enabled: Boolean(token),
     refetchInterval: 5000,
   });
-
-  const cards = [
-    { label: "Quorum", value: `${dashboard.data?.attendance.quorumPercentage ?? 0}%`, icon: BarChart3, tone: "success" },
-    { label: "Attendance Pending", value: `${dashboard.data?.attendance.pendingApprovals ?? 0}`, icon: Clock3, tone: "warning" },
-    { label: "Votes Counted", value: `${dashboard.data?.voting.totalVotes ?? 0}`, icon: Vote, tone: "primary" },
-    { label: "Shareholders", value: `${dashboard.data?.shareholders.total ?? 0}`, icon: ShieldCheck, tone: "neutral" },
-  ] as const;
+  const shareholders = useQuery({
+    queryKey: ["shareholders", token],
+    queryFn: () => fetchList<ShareholderRow>(token!, "/shareholders"),
+    enabled: Boolean(token),
+  });
   const attendancePending = useQuery({
     queryKey: ["attendance-pending", token],
     queryFn: () => fetchList<AttendanceRow>(token!, "/attendance?status=PENDING"),
@@ -199,15 +303,25 @@ function App() {
     queryFn: () => fetchList<VoteRow>(token!, "/votes"),
     enabled: Boolean(token),
   });
-  const shareholders = useQuery({
-    queryKey: ["shareholders", token],
-    queryFn: () => fetchList<ShareholderRow>(token!, "/shareholders"),
+  const candidates = useQuery({
+    queryKey: ["candidates", token],
+    queryFn: () => fetchList<CandidateRow>(token!, "/candidates"),
+    enabled: Boolean(token),
+  });
+  const candidateNominationResults = useQuery({
+    queryKey: ["candidate-nominations-results", token],
+    queryFn: () => fetchList<CandidateNominationResultRow>(token!, "/candidate-nominations/results"),
+    enabled: Boolean(token),
+  });
+  const candidateNominationEligibleVoters = useQuery({
+    queryKey: ["candidate-nominations-eligible-voters", token],
+    queryFn: () => fetchList<ShareholderRow>(token!, "/candidate-nominations/eligible-voters"),
     enabled: Boolean(token),
   });
   const auditLogs = useQuery({
     queryKey: ["audit", token],
     queryFn: () => fetchList<AuditRow>(token!, "/audit-logs"),
-    enabled: Boolean(token),
+    enabled: Boolean(token && canViewAudit),
   });
   const config = useQuery({
     queryKey: ["config", token],
@@ -215,59 +329,55 @@ function App() {
     enabled: Boolean(token && isSuperAdmin),
   });
 
-  const refreshAll = () => {
+  const resolvedAutoClassificationEnabled = autoClassificationEnabled ?? config.data?.influentialAutoClassificationEnabled ?? false;
+  const resolvedInfluentialThreshold = influentialThreshold || String(config.data?.influentialShareThreshold ?? 100000);
+  const resolvedAttendanceMakerCheckerEnabled =
+    attendanceMakerCheckerEnabled ?? config.data?.attendanceMakerCheckerEnabled ?? true;
+  const resolvedVotingMakerCheckerEnabled = votingMakerCheckerEnabled ?? config.data?.votingMakerCheckerEnabled ?? true;
+
+  const refreshAll = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["dashboard", token] });
+    queryClient.invalidateQueries({ queryKey: ["shareholders", token] });
     queryClient.invalidateQueries({ queryKey: ["attendance-pending", token] });
     queryClient.invalidateQueries({ queryKey: ["attendance-all", token] });
     queryClient.invalidateQueries({ queryKey: ["votes-pending", token] });
     queryClient.invalidateQueries({ queryKey: ["votes-all", token] });
-    queryClient.invalidateQueries({ queryKey: ["shareholders", token] });
+    queryClient.invalidateQueries({ queryKey: ["candidates", token] });
+    queryClient.invalidateQueries({ queryKey: ["candidate-nominations-results", token] });
+    queryClient.invalidateQueries({ queryKey: ["candidate-nominations-eligible-voters", token] });
     queryClient.invalidateQueries({ queryKey: ["audit", token] });
     queryClient.invalidateQueries({ queryKey: ["config", token] });
-  };
+  }, [queryClient, token]);
 
   const createShareholderMutation = useMutation({
     mutationFn: async () => {
-      await fetch(`${API_BASE}/shareholders`, {
+      const res = await fetch(`${API_BASE}/shareholders`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           fullNameEn: shareholderName,
           shares: Number(shareholderShares),
           isHighPower: manualInfluentialFlag,
         }),
       });
+      if (!res.ok) throw new Error("Unable to create");
     },
     onSuccess: () => {
+      setShowCreateModal(false);
       setShareholderName("");
       setShareholderShares("100");
       setManualInfluentialFlag(false);
       refreshAll();
+      message.success("Shareholder added.");
     },
   });
-
-  const deleteShareholderMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await deleteAuthorized(token!, `/shareholders/${id}`);
-    },
-    onSuccess: refreshAll,
-  });
-
   const updateShareholderMutation = useMutation({
     mutationFn: async () => {
       const current = shareholders.data?.find((s) => s.id === editingShareholderId);
-      if (!current) {
-        throw new Error("Shareholder not found");
-      }
+      if (!current) throw new Error("Shareholder not found");
       const res = await fetch(`${API_BASE}/shareholders/${editingShareholderId}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           fullNameEn: editingShareholderName,
           shares: Number(editingShareholderShares),
@@ -275,627 +385,1163 @@ function App() {
           contactInfo: current.id,
         }),
       });
-      if (!res.ok) {
-        throw new Error("Unable to update shareholder");
-      }
+      if (!res.ok) throw new Error("Unable to update shareholder");
     },
     onSuccess: () => {
+      setShowEditModal(false);
       setEditingShareholderId("");
-      setEditingShareholderName("");
-      setEditingShareholderShares("100");
-      setEditingInfluentialFlag(false);
       refreshAll();
+      message.success("Shareholder updated.");
     },
   });
-
-  const saveInfluentialConfigMutation = useMutation({
+  const deleteShareholderMutation = useMutation({
+    mutationFn: (id: string) => deleteAuthorized(token!, `/shareholders/${id}`),
+    onSuccess: () => {
+      refreshAll();
+      message.success("Shareholder removed.");
+    },
+  });
+  const bulkCreateShareholdersMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${API_BASE}/shareholders/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ rows: bulkRowsPreview }),
+      });
+      if (!res.ok) throw new Error("Unable to import shareholder list");
+    },
+    onSuccess: () => {
+      setBulkRowsPreview([]);
+      refreshAll();
+      message.success("Bulk shareholders imported.");
+    },
+  });
+  const createCandidateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${API_BASE}/candidates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ shareholderId: candidateShareholderId, position: candidatePosition }),
+      });
+      if (!res.ok) throw new Error("Unable to register candidate");
+    },
+    onSuccess: () => {
+      setShowCandidateModal(false);
+      setCandidateShareholderId("");
+      setCandidatePosition("Board Member");
+      refreshAll();
+      message.success("Candidate registered.");
+    },
+    onError: () => message.error("Could not register candidate."),
+  });
+  const deleteCandidateMutation = useMutation({
+    mutationFn: (id: string) => deleteAuthorized(token!, `/candidates/${id}`),
+    onSuccess: () => {
+      refreshAll();
+      message.success("Candidate removed.");
+    },
+  });
+  const castCandidateNominationVoteMutation = useMutation({
+    mutationFn: async () => {
+      await postAuthorized(token!, "/candidate-nominations/vote", {
+        voterShareholderId: nominationVoterShareholderId,
+        nomineeShareholderId: nominationNomineeShareholderId,
+      });
+    },
+    onSuccess: () => {
+      setNominationVoterShareholderId("");
+      setNominationNomineeShareholderId("");
+      refreshAll();
+      message.success("Nomination vote recorded.");
+    },
+    onError: () => {
+      message.error("Could not record nomination vote.");
+    },
+  });
+  const promoteNomineeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${API_BASE}/candidate-nominations/promote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ nomineeShareholderId: promoteNomineeShareholderId, position: promoteCandidatePosition }),
+      });
+      if (!res.ok) throw new Error("Unable to promote nominee");
+    },
+    onSuccess: () => {
+      setPromoteNomineeShareholderId("");
+      setPromoteCandidatePosition("Board Member");
+      refreshAll();
+      message.success("Nominee promoted to official candidate.");
+    },
+    onError: () => {
+      message.error("Could not promote nominee.");
+    },
+  });
+  const saveAdminConfigMutation = useMutation({
     mutationFn: async () => {
       await fetch(`${API_BASE}/config`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          influentialAutoClassificationEnabled: autoClassificationEnabled,
-          influentialShareThreshold: Number(influentialThreshold),
+          attendanceMakerCheckerEnabled: resolvedAttendanceMakerCheckerEnabled,
+          votingMakerCheckerEnabled: resolvedVotingMakerCheckerEnabled,
+          influentialAutoClassificationEnabled: resolvedAutoClassificationEnabled,
+          influentialShareThreshold: Number(resolvedInfluentialThreshold),
           applyInfluentialClassificationNow: true,
         }),
       });
     },
-    onSuccess: refreshAll,
-  });
-
-  const markAttendanceMutation = useMutation({
-    mutationFn: async () => {
-      await postAuthorized(token!, "/attendance/mark", { shareholderId: selectedShareholder });
+    onSuccess: () => {
+      refreshAll();
+      message.success("Settings saved.");
     },
-    onSuccess: refreshAll,
   });
-
-  const approveAttendanceMutation = useMutation({
-    mutationFn: async (payload: { id: string; approve: boolean }) => {
-      await postAuthorized(token!, "/attendance/approve", { attendanceId: payload.id, approve: payload.approve });
-    },
-    onSuccess: refreshAll,
-  });
-
-  const reverseAttendanceMutation = useMutation({
+  const resetSessionMutation = useMutation({
     mutationFn: async () => {
-      await postAuthorized(token!, "/attendance/reverse", {
-        attendanceId: selectedAttendance,
-        reason: "Admin correction",
+      const res = await fetch(`${API_BASE}/admin/session/reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          clearCandidates: resetClearCandidates,
+          clearAuditLogs: resetClearAuditLogs,
+        }),
       });
+      if (!res.ok) {
+        throw new Error("Unable to reset AGM session");
+      }
     },
+    onSuccess: () => {
+      setShowResetSessionModal(false);
+      setResetClearCandidates(false);
+      setResetClearAuditLogs(false);
+      refreshAll();
+      message.success("AGM session data cleared.");
+    },
+    onError: () => message.error("Could not clear AGM session data."),
+  });
+  const markAttendanceMutation = useMutation({
+    mutationFn: () => postAuthorized(token!, "/attendance/mark", { shareholderId: selectedShareholder }),
+    onSuccess: () => {
+      refreshAll();
+      message.success("Attendance marked.");
+    },
+  });
+  const approveAttendanceMutation = useMutation({
+    mutationFn: (payload: { id: string; approve: boolean }) =>
+      postAuthorized(token!, "/attendance/approve", { attendanceId: payload.id, approve: payload.approve }),
+    onSuccess: refreshAll,
+  });
+  const reverseAttendanceMutation = useMutation({
+    mutationFn: () => postAuthorized(token!, "/attendance/reverse", { attendanceId: selectedAttendance, reason: "Admin correction" }),
     onSuccess: () => {
       setSelectedAttendance("");
       refreshAll();
     },
   });
-
   const encodeVoteMutation = useMutation({
-    mutationFn: async () => {
-      await postAuthorized(token!, "/votes/encode", {
-        shareholderId: selectedShareholder,
-        candidateId: "c-01",
-        sharesUsed: 100,
-      });
-    },
+    mutationFn: () =>
+      postAuthorized(token!, "/votes/encode", { shareholderId: selectedShareholder, candidateId: selectedCandidate }),
     onSuccess: refreshAll,
   });
-
   const approveVoteMutation = useMutation({
-    mutationFn: async (payload: { id: string; approve: boolean }) => {
-      await postAuthorized(token!, "/votes/approve", { voteId: payload.id, approve: payload.approve });
-    },
+    mutationFn: (payload: { id: string; approve: boolean }) =>
+      postAuthorized(token!, "/votes/approve", { voteId: payload.id, approve: payload.approve }),
     onSuccess: refreshAll,
   });
-
   const reverseVoteMutation = useMutation({
-    mutationFn: async () => {
-      await postAuthorized(token!, "/votes/reverse", { voteId: selectedVote, reason: "Admin correction" });
-    },
+    mutationFn: () => postAuthorized(token!, "/votes/reverse", { voteId: selectedVote, reason: "Admin correction" }),
     onSuccess: () => {
       setSelectedVote("");
       refreshAll();
     },
   });
 
-  const sidebarItems = useMemo(
-    () =>
-      [
-        { id: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard, visible: true },
-        { id: "shareholders" as const, label: "Shareholders", icon: Users, visible: isSuperAdmin },
-        { id: "attendance" as const, label: "Attendance Queue", icon: Clock3, visible: canMarkAttendance || canApproveAttendance || isSuperAdmin },
-        { id: "votes" as const, label: "Vote Queue", icon: Vote, visible: canEncodeVote || canApproveVote || isSuperAdmin },
-        { id: "audit" as const, label: "Audit Logs", icon: ShieldCheck, visible: canViewAudit },
-      ].filter((item) => item.visible),
-    [canApproveAttendance, canApproveVote, canEncodeVote, canMarkAttendance, canViewAudit, isSuperAdmin]
-  );
-
   useEffect(() => {
-    if (!token) {
-      return;
-    }
+    localStorage.setItem(THEME_KEY, themeMode);
+  }, [themeMode]);
+  useEffect(() => {
+    if (!token) return;
     const socket = io("http://localhost:4000");
-    socket.on("dashboard:refresh", () => {
-      refreshAll();
-    });
+    socket.on("dashboard:refresh", refreshAll);
     return () => {
       socket.disconnect();
     };
-  }, [token, queryClient]);
+  }, [refreshAll, token]);
 
-  useEffect(() => {
-    if (config.data) {
-      setAutoClassificationEnabled(config.data.influentialAutoClassificationEnabled);
-      setInfluentialThreshold(String(config.data.influentialShareThreshold));
-    }
-  }, [config.data]);
+  const menuItems = [
+    { key: "dashboard", label: "Dashboard", icon: <IconLayoutDashboard size={16} />, visible: true },
+    { key: "shareholders", label: "Shareholders", icon: <IconUsers size={16} />, visible: isSuperAdmin },
+    { key: "candidates", label: "Candidates", icon: <IconUserStar size={16} />, visible: isSuperAdmin },
+    {
+      key: "attendance",
+      label: "Attendance",
+      icon: <IconClockCheck size={16} />,
+      visible: canMarkAttendance || canApproveAttendance || isSuperAdmin,
+    },
+    { key: "votes", label: "Votes", icon: <IconCheckupList size={16} />, visible: canEncodeVote || canApproveVote || isSuperAdmin },
+    { key: "audit", label: "Audit Logs", icon: <IconReceipt2 size={16} />, visible: canViewAudit },
+    { key: "settings", label: "Settings", icon: <IconSettings size={16} />, visible: isSuperAdmin },
+  ].filter((item) => item.visible);
 
-  useEffect(() => {
-    if (!token) {
-      return;
+  const parseBoolCell = (value: unknown): boolean | undefined => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value === 1 ? true : value === 0 ? false : undefined;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (["true", "1", "yes"].includes(normalized)) return true;
+      if (["false", "0", "no"].includes(normalized)) return false;
     }
-    const timeoutMs = 15 * 60 * 1000;
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const logout = () => {
-      setSession(null);
-      localStorage.removeItem(STORAGE_KEY);
-      setSection("dashboard");
-    };
-    const resetTimer = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(logout, timeoutMs);
-    };
-    const events: Array<keyof WindowEventMap> = ["mousemove", "keydown", "click", "scroll"];
-    resetTimer();
-    events.forEach((event) => window.addEventListener(event, resetTimer));
-    return () => {
-      clearTimeout(timeoutId);
-      events.forEach((event) => window.removeEventListener(event, resetTimer));
-    };
-  }, [token]);
+    return undefined;
+  };
+  const uploadProps: UploadProps = {
+    accept: ".xlsx,.xls",
+    maxCount: 1,
+    beforeUpload: async (file) => {
+      try {
+        const bytes = await file.arrayBuffer();
+        const workbook = XLSX.read(bytes, { type: "array" });
+        const first = workbook.SheetNames[0];
+        if (!first) throw new Error("No sheet found");
+        const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[first], { defval: "" });
+        const parsed = raw
+          .map((row) => ({
+            fullNameEn: String(row.fullNameEn ?? "").trim(),
+            shares: Number(row.shares),
+            isHighPower: parseBoolCell(row.isHighPower),
+            fullNameAm: String(row.fullNameAm ?? "").trim() || undefined,
+            contactInfo: String(row.contactInfo ?? "").trim() || undefined,
+          }))
+          .filter((row) => row.fullNameEn.length > 0 && Number.isFinite(row.shares) && row.shares > 0);
+        if (!parsed.length) {
+          message.error("No valid rows found in uploaded file.");
+          setBulkRowsPreview([]);
+        } else {
+          setBulkRowsPreview(parsed);
+          message.success(`Prepared ${parsed.length} rows for import.`);
+        }
+      } catch {
+        message.error("Failed to parse spreadsheet.");
+      }
+      return false;
+    },
+  };
+
+  const dashboardCards = [
+    {
+      key: "shareholders-total",
+      title: "Total Shareholders",
+      value: `${dashboard.data?.shareholders.total ?? 0}`,
+      meta: "All registered shareholders",
+      icon: <IconUsers size={18} />,
+      tone: "success",
+    },
+    {
+      key: "shares-total",
+      title: "Total Shares",
+      value: `${dashboard.data?.shareholders.sharesTotal ?? 0}`,
+      meta: "Combined ownership shares",
+      icon: <IconDatabaseImport size={18} />,
+      tone: "primary",
+    },
+    {
+      key: "shareholders-influential",
+      title: "Influential Shareholders",
+      value: `${dashboard.data?.shareholders.highPower ?? 0}`,
+      meta: "High shares",
+      icon: <IconShieldCheck size={18} />,
+      tone: "warning",
+    },
+    {
+      key: "shareholders-non-influential",
+      title: "Non-Influential Shareholders",
+      value: `${dashboard.data?.shareholders.lowPower ?? 0}`,
+      meta: "Low shares",
+      icon: <IconCheckupList size={18} />,
+      tone: "neutral",
+    },
+  ] as const;
+  const attendedShareholderIds = new Set(
+    (attendanceAll.data ?? [])
+      .filter((row) => row.status === "APPROVED")
+      .map((row) => row.shareholder_id)
+  );
+  const votedShareholderIds = new Set((votesAll.data ?? []).map((vote) => vote.shareholder_id));
+  const eligibleVoters = (shareholders.data ?? []).filter(
+    (shareholder) => attendedShareholderIds.has(shareholder.id) && !votedShareholderIds.has(shareholder.id)
+  );
+  const selectableCandidates = (candidates.data ?? []).filter(
+    (candidate) => !selectedShareholder || candidate.shareholder_id !== selectedShareholder
+  );
+  const selectableNomineeShareholders = (shareholders.data ?? []).filter(
+    (shareholder) => !nominationVoterShareholderId || shareholder.id !== nominationVoterShareholderId
+  );
+  const handleVoteVoterChange = (nextVoterId: string) => {
+    setSelectedShareholder(nextVoterId);
+    const selectedCandidateEntry = (candidates.data ?? []).find((candidate) => candidate.id === selectedCandidate);
+    if (selectedCandidateEntry?.shareholder_id === nextVoterId) {
+      setSelectedCandidate("");
+    }
+  };
+  const handleNominationVoterChange = (nextVoterId: string) => {
+    setNominationVoterShareholderId(nextVoterId);
+    if (nominationNomineeShareholderId === nextVoterId) {
+      setNominationNomineeShareholderId("");
+    }
+  };
+  const openConfirmDialog = (options: Omit<ConfirmDialogState, "open">) => {
+    setConfirmDialog({ open: true, ...options });
+  };
+  const closeConfirmDialog = () => {
+    setConfirmDialog({ open: false, title: "", description: "", onConfirm: undefined });
+  };
+
+  if (!token) {
+    return (
+      <ConfigProvider
+        theme={{
+          algorithm: themeMode === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+          token: { colorPrimary: "#7367f0", borderRadius: 8 },
+        }}
+      >
+        <div className={`vx-login-page ${themeMode === "dark" ? "is-dark" : ""}`}>
+          <Card className="vx-login-card" styles={{ body: { padding: 0 } }}>
+            <div className="vx-login-grid">
+              <div className="vx-login-cover">
+                <Tag color="purple">SHMMF</Tag>
+                <Title level={2} style={{ marginTop: 18 }}>Welcome to SHMMF</Title>
+                <Text type="secondary">A polished AGM operations suite for compliant workflows and approvals.</Text>
+                <div className="vx-cover-visual">
+                  <div className="vx-orbit" />
+                  <div className="vx-avatar-figure">SM</div>
+                  <div className="vx-float-card vx-float-left">Quorum +8.2%</div>
+                  <div className="vx-float-card vx-float-right">Votes 12.4k</div>
+                </div>
+              </div>
+              <div className="vx-login-form-wrap">
+                <Space className="vx-login-form-head">
+                  <Title level={4} style={{ margin: 0 }}>Welcome back</Title>
+                  <Switch
+                    checkedChildren="Dark"
+                    unCheckedChildren="Light"
+                    checked={themeMode === "dark"}
+                    onChange={(checked) => setThemeMode(checked ? "dark" : "light")}
+                  />
+                </Space>
+                <Form layout="vertical" onFinish={() => loginMutation.mutate({ user: username, pass: password })}>
+                  <Form.Item label="Username" required>
+                    <Input value={username} onChange={(e) => setUsername(e.target.value)} />
+                  </Form.Item>
+                  <Form.Item label="Password" required>
+                    <Input.Password value={password} onChange={(e) => setPassword(e.target.value)} />
+                  </Form.Item>
+                  <Form.Item label="Remember me">
+                    <Switch checked={rememberMe} onChange={setRememberMe} />
+                  </Form.Item>
+                  <Button type="primary" htmlType="submit" block loading={loginMutation.isPending}>
+                    Login
+                  </Button>
+                </Form>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </ConfigProvider>
+    );
+  }
 
   return (
-    <main className="app-shell app-layout">
-      {!token && (
-        <section className="panel">
-          <h2>System Access</h2>
-          <p className="paragraph">Sign in with your assigned role account to continue.</p>
-          <div className="inline-form">
-            <input value={username} onChange={(e) => setUsername(e.target.value)} className="input" placeholder="Username" />
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input"
-              placeholder="Password"
-              type="password"
-            />
+    <ConfigProvider
+      theme={{
+        algorithm: themeMode === "dark" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+        token: { colorPrimary: "#7367f0", borderRadius: 8 },
+      }}
+    >
+      <Layout className={`vx-app ${themeMode === "dark" ? "is-dark" : ""}`}>
+        <Sider width={264} className="vx-sider">
+          <div className="vx-brand">
+            <Title level={5} style={{ color: "#fff", margin: 0 }}>SHMMF Console</Title>
+            <Text className="vx-brand-role">Role: {role}</Text>
           </div>
-          <label className="remember-row">
-            <input
-              type="checkbox"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-            />
-            <span>Remember me</span>
-          </label>
-          <button
-            className="action-btn"
-            type="button"
-            onClick={() => loginMutation.mutate({ user: username, pass: password })}
-            disabled={loginMutation.isPending}
-          >
-            {loginMutation.isPending ? "Signing in..." : "Enter Command Dashboard"}
-          </button>
-          {loginMutation.isError && <p className="error">Could not authenticate with API.</p>}
-        </section>
-      )}
-      {token && (
-        <>
-          <aside className="sidebar">
-            <p className="muted">SHMMF Console</p>
-            <h2 className="sidebar-title">AGM Operations</h2>
-            <p className="paragraph">Role: {role}</p>
-            <button
-              type="button"
-              className="text-btn"
-              onClick={() => {
-                setSession(null);
-                localStorage.removeItem(STORAGE_KEY);
-                setSection("dashboard");
-              }}
-            >
-              Logout
-            </button>
-            {sidebarItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`nav-btn ${section === item.id ? "active" : ""}`}
-                onClick={() => setSection(item.id)}
-              >
-                <item.icon size={16} />
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </aside>
-
-          <section>
-            <header className="top-bar">
-              <div>
-                <p className="muted">Shareholders Meeting Management Framework</p>
-                <h1>AGM Command Center</h1>
+          <Menu
+            theme="dark"
+            mode="inline"
+            className="vx-menu"
+            selectedKeys={[section]}
+            items={menuItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label }))}
+            onClick={(e) => setSection(e.key as Section)}
+          />
+        </Sider>
+        <Layout className="vx-main-layout">
+          <Header className="vx-topbar">
+            <div className="vx-header-left" />
+            <Space className="vx-header-right" size={14}>
+              <Button className="vx-icon-btn" type="text" icon={<IconLanguage size={17} />} />
+              <Switch
+                checked={themeMode === "dark"}
+                onChange={(checked) => setThemeMode(checked ? "dark" : "light")}
+                checkedChildren={<><IconMoon size={14} /> Dark</>}
+                unCheckedChildren={<><IconSun size={14} /> Light</>}
+              />
+              <Button className="vx-icon-btn" type="text" icon={<IconLayoutGrid size={17} />} />
+              <Badge dot>
+                <Button className="vx-icon-btn" type="text" icon={<IconBell size={17} />} />
+              </Badge>
+              <Badge dot>
+                <Dropdown
+                  trigger={["click"]}
+                  menu={{
+                    items: [
+                      {
+                        key: "profile",
+                        label: (
+                          <div style={{ minWidth: 170 }}>
+                            <div style={{ fontWeight: 600 }}>{activeUsername}</div>
+                            <div style={{ opacity: 0.75, fontSize: 12 }}>{role}</div>
+                          </div>
+                        ),
+                        disabled: true,
+                      },
+                      { type: "divider" },
+                      {
+                        key: "logout",
+                        icon: <IconLogout size={15} />,
+                        label: "Logout",
+                        danger: true,
+                      },
+                    ],
+                    onClick: ({ key }) => {
+                      if (key === "logout") {
+                        setSession(null);
+                        localStorage.removeItem(STORAGE_KEY);
+                      }
+                    },
+                  }}
+                >
+                  <Avatar style={{ backgroundColor: "#1677ff", cursor: "pointer" }}>{activeUsername.charAt(0).toUpperCase()}</Avatar>
+                </Dropdown>
+              </Badge>
+              <div className="vx-user-meta">
+                <Text strong>{activeUsername}</Text>
+                <Text type="secondary" className="vx-user-role">{role}</Text>
               </div>
-              <span className="badge">Live Session</span>
-            </header>
-
+            </Space>
+          </Header>
+          <Content className="vx-content">
+            <div className="vx-page-title">
+              <Title level={4} style={{ margin: 0 }}>{section[0].toUpperCase()}{section.slice(1)}</Title>
+              <Tag color="green">Live Session</Tag>
+            </div>
             {section === "dashboard" && (
-              <>
-                {dashboard.isLoading && <section className="panel"><p>Loading dashboard snapshot...</p></section>}
-                <section className="grid">
-                  {cards.map((card) => (
-                    <article key={card.label} className={`card card-${card.tone}`}>
-                      <div className="card-head">
-                        <card.icon size={20} />
-                        <span>{card.label}</span>
+              <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                <div className="vx-stats-grid">
+                  {dashboardCards.map((item) => (
+                    <Card key={item.key} className={`vx-card vx-kpi-card vx-kpi-${item.tone}`}>
+                      <div className="vx-kpi-head">
+                        <div>
+                          <Text className="vx-kpi-title">{item.title}</Text>
+                          <h3 className="vx-kpi-value">{item.value}</h3>
+                        </div>
+                        <span className="vx-kpi-icon">{item.icon}</span>
                       </div>
-                      <p className="value">{card.value}</p>
-                    </article>
+                      <div className="vx-kpi-footer">
+                        <Text type="secondary">{item.meta}</Text>
+                      </div>
+                    </Card>
                   ))}
-                </section>
-              </>
+                </div>
+                <div className="vx-dashboard-grid">
+                  <Card title="Quorum Progress" className="vx-card">
+                    <div className="vx-quorum-wrap">
+                      <Progress
+                        type="circle"
+                        percent={Number(dashboard.data?.attendance.quorumPercentage ?? 0)}
+                        strokeColor="#7367f0"
+                        trailColor="rgba(115, 103, 240, 0.14)"
+                      />
+                      <div>
+                        <h3 style={{ margin: "0 0 6px" }}>{dashboard.data?.attendance.attendedShareholders ?? 0} attended</h3>
+                        <Text type="secondary">
+                          Out of {dashboard.data?.shareholders.total ?? 0} total shareholders.
+                        </Text>
+                      </div>
+                    </div>
+                  </Card>
+                  <Card title="Votes by Candidate (Weighted by Shares)" className="vx-card">
+                    <div className="vx-vote-chart">
+                      {(dashboard.data?.voting.byCandidate ?? []).map((row: DashboardSnapshot["voting"]["byCandidate"][number]) => {
+                        const maxShares = Math.max(
+                          ...(dashboard.data?.voting.byCandidate ?? []).map((candidate: DashboardSnapshot["voting"]["byCandidate"][number]) => candidate.totalShares),
+                          1
+                        );
+                        const widthPercent = Math.max(6, Math.round((row.totalShares / maxShares) * 100));
+                        return (
+                          <div key={row.candidateId} className="vx-vote-row">
+                            <div className="vx-vote-label">
+                              <strong>{row.candidateName}</strong>
+                              <span>{row.voteCount} votes</span>
+                            </div>
+                            <div className="vx-vote-bar-track">
+                              <div className="vx-vote-bar-fill" style={{ width: `${widthPercent}%` }} />
+                            </div>
+                            <div className="vx-vote-value">{row.totalShares.toLocaleString()} shares</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                </div>
+              </Space>
             )}
 
             {section === "shareholders" && (
-              <section className="panel">
-                <h2>Shareholders</h2>
-                <p className="paragraph">Total loaded: {shareholders.data?.length ?? 0}</p>
-                {isSuperAdmin && (
-                  <div className="panel subpanel">
-                    <h3>Influential Classification</h3>
-                    <label className="remember-row">
-                      <input
-                        type="checkbox"
-                        checked={autoClassificationEnabled}
-                        onChange={(e) => setAutoClassificationEnabled(e.target.checked)}
-                      />
-                      <span>Enable automatic influential classification by share threshold</span>
-                    </label>
-                    <div className="inline-form">
-                      <input
-                        value={influentialThreshold}
-                        onChange={(e) => setInfluentialThreshold(e.target.value)}
-                        className="input"
-                        placeholder="Share threshold"
-                        disabled={!autoClassificationEnabled}
-                      />
-                      <button
-                        type="button"
-                        className="action-btn"
-                        onClick={() => saveInfluentialConfigMutation.mutate()}
-                        disabled={saveInfluentialConfigMutation.isPending}
-                      >
-                        Save Classification Settings
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <div className="inline-form">
-                  <input
-                    value={shareholderName}
-                    onChange={(e) => setShareholderName(e.target.value)}
-                    className="input"
-                    placeholder="Full name"
-                  />
-                  <input
-                    value={shareholderShares}
-                    onChange={(e) => setShareholderShares(e.target.value)}
-                    className="input"
-                    placeholder="Shares"
-                  />
-                  <label className="remember-row">
-                    <input
-                      type="checkbox"
-                      checked={manualInfluentialFlag}
-                      onChange={(e) => setManualInfluentialFlag(e.target.checked)}
-                      disabled={autoClassificationEnabled}
-                    />
-                    <span>Mark as Influential Shareholder</span>
-                  </label>
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => createShareholderMutation.mutate()}
-                    disabled={!shareholderName || createShareholderMutation.isPending || !isSuperAdmin}
+              <Card title="Shareholders" className="vx-card">
+                <Space wrap style={{ marginBottom: 16 }}>
+                  <Button type="primary" icon={<IconUserPlus size={16} />} onClick={() => setShowCreateModal(true)} disabled={!isSuperAdmin}>Add Shareholder</Button>
+                  <Button icon={<IconDownload size={16} />} onClick={() => downloadFile(token, "/shareholders/template?format=xlsx", "shareholders-template.xlsx")} disabled={!isSuperAdmin}>
+                    Download Template
+                  </Button>
+                  <Upload {...uploadProps}>
+                    <Button icon={<IconCloudUpload size={16} />} disabled={!isSuperAdmin}>Upload Template</Button>
+                  </Upload>
+                  <Button
+                    type="primary"
+                    icon={<IconDatabaseImport size={16} />}
+                    onClick={() => bulkCreateShareholdersMutation.mutate()}
+                    loading={bulkCreateShareholdersMutation.isPending}
+                    disabled={!isSuperAdmin || bulkRowsPreview.length === 0}
                   >
-                    Add Shareholder
-                  </button>
-                </div>
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Shares</th>
-                        <th>Classification</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {shareholders.data?.map((s) => (
-                        <tr key={s.id}>
-                          <td>{s.id}</td>
-                          <td>{s.fullNameEn}</td>
-                          <td>{s.shares}</td>
-                          <td>{s.isHighPower ? "Influential" : "Non-influential"}</td>
-                          <td>
-                            <button
-                              type="button"
-                              className="text-btn"
-                              onClick={() => {
-                                setEditingShareholderId(s.id);
-                                setEditingShareholderName(s.fullNameEn);
-                                setEditingShareholderShares(String(s.shares));
-                                setEditingInfluentialFlag(s.isHighPower);
-                              }}
-                              disabled={!isSuperAdmin}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="text-btn danger"
-                              onClick={() => deleteShareholderMutation.mutate(s.id)}
-                              disabled={!isSuperAdmin}
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {editingShareholderId && (
-                  <div className="inline-form">
-                    <input
-                      value={editingShareholderName}
-                      onChange={(e) => setEditingShareholderName(e.target.value)}
-                      className="input"
-                      placeholder="Edit full name"
-                    />
-                    <input
-                      value={editingShareholderShares}
-                      onChange={(e) => setEditingShareholderShares(e.target.value)}
-                      className="input"
-                      placeholder="Edit shares"
-                    />
-                    <label className="remember-row">
-                      <input
-                        type="checkbox"
-                        checked={editingInfluentialFlag}
-                        onChange={(e) => setEditingInfluentialFlag(e.target.checked)}
-                        disabled={autoClassificationEnabled}
+                    Import {bulkRowsPreview.length || ""} Rows
+                  </Button>
+                </Space>
+
+                <Table
+                  rowKey="id"
+                  dataSource={shareholders.data ?? []}
+                  pagination={{ pageSize: 8 }}
+                  columns={[
+                    { title: "ID", dataIndex: "id" },
+                    { title: "Name", dataIndex: "fullNameEn" },
+                    { title: "Shares", dataIndex: "shares" },
+                    {
+                      title: "Classification",
+                      dataIndex: "isHighPower",
+                      render: (value: boolean) => <Tag color={value ? "gold" : "default"}>{value ? "Influential" : "Standard"}</Tag>,
+                    },
+                    {
+                      title: "Action",
+                      render: (_, record: ShareholderRow) => (
+                        <Space>
+                          <Button
+                            icon={<IconEdit size={15} />}
+                            onClick={() => {
+                              setEditingShareholderId(record.id);
+                              setEditingShareholderName(record.fullNameEn);
+                              setEditingShareholderShares(String(record.shares));
+                              setEditingInfluentialFlag(record.isHighPower);
+                              setShowEditModal(true);
+                            }}
+                            disabled={!isSuperAdmin}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            danger
+                            icon={<IconTrash size={15} />}
+                            onClick={() =>
+                              openConfirmDialog({
+                                title: "Delete Shareholder",
+                                description: `Are you sure you want to delete ${record.fullNameEn}? This action cannot be undone.`,
+                                confirmText: "Delete",
+                                danger: true,
+                                onConfirm: () => deleteShareholderMutation.mutate(record.id),
+                              })
+                            }
+                            disabled={!isSuperAdmin}
+                          >
+                            Delete
+                          </Button>
+                        </Space>
+                      ),
+                    },
+                  ]}
+                />
+              </Card>
+            )}
+
+            {section === "candidates" && (
+              <Card title="Candidates" className="vx-card">
+                <Space wrap style={{ marginBottom: 16 }}>
+                  <Button type="primary" icon={<IconUserStar size={16} />} onClick={() => setShowCandidateModal(true)} disabled={!isSuperAdmin}>
+                    Register Candidate
+                  </Button>
+                  {isSuperAdmin && (
+                    <>
+                      <Button icon={<IconFileTypeCsv size={16} />} onClick={() => downloadFile(token, "/reports/candidate-nominations?format=csv", "candidate-nominations-report.csv")}>
+                        Export Nominations CSV
+                      </Button>
+                      <Button icon={<IconFileSpreadsheet size={16} />} onClick={() => downloadFile(token, "/reports/candidate-nominations?format=xlsx", "candidate-nominations-report.xlsx")}>
+                        Export Nominations Excel
+                      </Button>
+                      <Button icon={<IconFileTypePdf size={16} />} onClick={() => downloadFile(token, "/reports/candidate-nominations?format=pdf", "candidate-nominations-report.pdf")}>
+                        Export Nominations PDF
+                      </Button>
+                    </>
+                  )}
+                </Space>
+                <Card size="small" className="vx-card vx-subcard">
+                  <Space direction="vertical" size={8} style={{ width: "100%" }}>
+                    <Space>
+                      <IconPodium size={17} />
+                      <Text strong>Shareholder Nomination Voting (Share-weighted)</Text>
+                    </Space>
+                    <Text type="secondary">
+                      Shareholders can vote for nominee shareholders. Vote weight uses the voter's shares, and top nominees can be promoted to the official candidate list.
+                    </Text>
+                    <Space wrap>
+                      <Select
+                        style={{ minWidth: 280 }}
+                        placeholder="Select voter shareholder"
+                        showSearch
+                        optionFilterProp="label"
+                        value={nominationVoterShareholderId || undefined}
+                        onChange={handleNominationVoterChange}
+                        options={(candidateNominationEligibleVoters.data ?? []).map((s) => ({
+                          value: s.id,
+                          label: `${s.fullNameEn} (${s.shares.toLocaleString()} shares)`,
+                        }))}
                       />
-                      <span>Influential Shareholder</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="action-btn"
-                      onClick={() => updateShareholderMutation.mutate()}
-                      disabled={updateShareholderMutation.isPending || !isSuperAdmin}
-                    >
-                      Save Edit
-                    </button>
-                  </div>
-                )}
-              </section>
+                      <Select
+                        style={{ minWidth: 280 }}
+                        placeholder="Select nominee shareholder"
+                        showSearch
+                        optionFilterProp="label"
+                        value={nominationNomineeShareholderId || undefined}
+                        onChange={setNominationNomineeShareholderId}
+                        options={selectableNomineeShareholders.map((s) => ({
+                          value: s.id,
+                          label: `${s.fullNameEn} (${s.shares.toLocaleString()} shares)`,
+                        }))}
+                      />
+                      <Button
+                        type="primary"
+                        icon={<IconDatabaseImport size={16} />}
+                        onClick={() => castCandidateNominationVoteMutation.mutate()}
+                        loading={castCandidateNominationVoteMutation.isPending}
+                        disabled={!nominationVoterShareholderId || !nominationNomineeShareholderId}
+                      >
+                        Cast Nomination Vote
+                      </Button>
+                    </Space>
+                    <Text type="secondary">
+                      Eligible nomination voters remaining: {candidateNominationEligibleVoters.data?.length ?? 0}
+                    </Text>
+                  </Space>
+                </Card>
+                <Card size="small" className="vx-card vx-subcard">
+                  <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                    <Space>
+                      <IconTrophy size={17} />
+                      <Text strong>Nomination Results Dashboard</Text>
+                    </Space>
+                    <Table
+                      rowKey="nomineeShareholderId"
+                      dataSource={candidateNominationResults.data ?? []}
+                      pagination={{ pageSize: 6 }}
+                      columns={[
+                        { title: "Nominee", dataIndex: "nomineeName" },
+                        { title: "Weighted Shares", dataIndex: "totalShares", render: (value: number) => value.toLocaleString() },
+                        { title: "Vote Count", dataIndex: "voteCount" },
+                      ]}
+                    />
+                    {isSuperAdmin && (
+                      <Space wrap>
+                        <Select
+                          style={{ minWidth: 300 }}
+                          placeholder="Promote nominee to candidate"
+                          showSearch
+                          optionFilterProp="label"
+                          value={promoteNomineeShareholderId || undefined}
+                          onChange={setPromoteNomineeShareholderId}
+                          options={(candidateNominationResults.data ?? [])
+                            .filter((row) => row.totalShares > 0)
+                            .map((row) => ({ value: row.nomineeShareholderId, label: `${row.nomineeName} (${row.totalShares.toLocaleString()} shares)` }))}
+                        />
+                        <Input
+                          style={{ minWidth: 220 }}
+                          placeholder="Position"
+                          value={promoteCandidatePosition}
+                          onChange={(e) => setPromoteCandidatePosition(e.target.value)}
+                        />
+                        <Button
+                          type="primary"
+                          icon={<IconUserStar size={16} />}
+                          onClick={() => promoteNomineeMutation.mutate()}
+                          loading={promoteNomineeMutation.isPending}
+                          disabled={!promoteNomineeShareholderId}
+                        >
+                          Promote to Candidate
+                        </Button>
+                      </Space>
+                    )}
+                  </Space>
+                </Card>
+                <Table
+                  rowKey="id"
+                  dataSource={candidates.data ?? []}
+                  columns={[
+                    { title: "Candidate", dataIndex: "name" },
+                    { title: "Position", dataIndex: "position" },
+                    { title: "Linked Shareholder ID", dataIndex: "shareholder_id" },
+                    {
+                      title: "Action",
+                      render: (_, record: CandidateRow) => (
+                        <Button
+                          danger
+                          icon={<IconTrash size={15} />}
+                          onClick={() =>
+                            openConfirmDialog({
+                              title: "Remove Candidate",
+                              description: `Remove ${record.name} from active candidates?`,
+                              confirmText: "Remove",
+                              danger: true,
+                              onConfirm: () => deleteCandidateMutation.mutate(record.id),
+                            })
+                          }
+                          disabled={!isSuperAdmin}
+                        >
+                          Remove
+                        </Button>
+                      ),
+                    },
+                  ]}
+                  pagination={{ pageSize: 8 }}
+                />
+              </Card>
             )}
 
             {section === "attendance" && (
-              <section className="panel">
-                <h2>Pending Attendance Approvals</h2>
-                <p className="paragraph">Queue size: {attendancePending.data?.length ?? 0}</p>
-                <div className="inline-form">
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => downloadReport(token!, "/reports/attendance?format=csv", "attendance-report.csv")}
-                  >
-                    Export Attendance CSV
-                  </button>
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => downloadReport(token!, "/reports/attendance?format=xlsx", "attendance-report.xlsx")}
-                  >
-                    Export Attendance Excel
-                  </button>
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => downloadReport(token!, "/reports/attendance?format=pdf", "attendance-report.pdf")}
-                  >
-                    Export Attendance PDF
-                  </button>
-                </div>
-                <div className="inline-form">
-                  <select className="input" value={selectedShareholder} onChange={(e) => setSelectedShareholder(e.target.value)}>
-                    <option value="">Select shareholder</option>
-                    {shareholders.data?.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.fullNameEn}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => markAttendanceMutation.mutate()}
-                    disabled={!selectedShareholder || markAttendanceMutation.isPending || !canMarkAttendance}
-                  >
+              <Card title="Pending Attendance Approvals" className="vx-card">
+                <Space wrap style={{ marginBottom: 16 }}>
+                  {isSuperAdmin && (
+                    <>
+                      <Button icon={<IconFileTypeCsv size={16} />} onClick={() => downloadFile(token, "/reports/attendance?format=csv", "attendance-report.csv")}>Export CSV</Button>
+                      <Button icon={<IconFileSpreadsheet size={16} />} onClick={() => downloadFile(token, "/reports/attendance?format=xlsx", "attendance-report.xlsx")}>Export Excel</Button>
+                      <Button icon={<IconFileTypePdf size={16} />} onClick={() => downloadFile(token, "/reports/attendance?format=pdf", "attendance-report.pdf")}>Export PDF</Button>
+                    </>
+                  )}
+                </Space>
+                <Space wrap style={{ marginBottom: 16 }}>
+                  <Select
+                    style={{ minWidth: 320 }}
+                    placeholder="Select shareholder"
+                    showSearch
+                    optionFilterProp="label"
+                    value={selectedShareholder || undefined}
+                    onChange={setSelectedShareholder}
+                    options={(shareholders.data ?? []).map((s) => ({ value: s.id, label: s.fullNameEn }))}
+                  />
+                  <Button type="primary" icon={<IconCheckupList size={16} />} onClick={() => markAttendanceMutation.mutate()} disabled={!selectedShareholder || !canMarkAttendance}>
                     Mark Attendance
-                  </button>
-                </div>
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Shareholder</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {attendancePending.data?.map((a) => (
-                        <tr key={a.id}>
-                          <td>{a.id.slice(0, 8)}</td>
-                          <td>{a.shareholder_id}</td>
-                          <td>{a.status}</td>
-                          <td className="actions">
-                            <button
-                              type="button"
-                              className="text-btn"
-                              onClick={() => approveAttendanceMutation.mutate({ id: a.id, approve: true })}
-                              disabled={!canApproveAttendance}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              className="text-btn danger"
-                              onClick={() => approveAttendanceMutation.mutate({ id: a.id, approve: false })}
-                              disabled={!canApproveAttendance}
-                            >
-                              Reject
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="inline-form">
-                  <select className="input" value={selectedAttendance} onChange={(e) => setSelectedAttendance(e.target.value)}>
-                    <option value="">Select attendance to reverse</option>
-                    {attendanceAll.data?.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.id.slice(0, 8)} - {a.status}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="action-btn danger-bg"
-                    onClick={() => reverseAttendanceMutation.mutate()}
-                    disabled={!selectedAttendance || reverseAttendanceMutation.isPending || !isSuperAdmin}
+                  </Button>
+                </Space>
+                <Table
+                  rowKey="id"
+                  dataSource={attendancePending.data ?? []}
+                  columns={[
+                    { title: "ID", dataIndex: "id", render: (id: string) => id.slice(0, 8) },
+                    { title: "Shareholder", dataIndex: "shareholder_id" },
+                    { title: "Status", dataIndex: "status" },
+                    {
+                      title: "Actions",
+                      render: (_, row: AttendanceRow) => (
+                        <Space>
+                          <Button
+                            icon={<IconShieldCheck size={15} />}
+                            onClick={() =>
+                              openConfirmDialog({
+                                title: "Approve Attendance",
+                                description: `Approve attendance record ${row.id.slice(0, 8)}?`,
+                                confirmText: "Approve",
+                                onConfirm: () => approveAttendanceMutation.mutate({ id: row.id, approve: true }),
+                              })
+                            }
+                            disabled={!canApproveAttendance}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            danger
+                            onClick={() =>
+                              openConfirmDialog({
+                                title: "Reject Attendance",
+                                description: `Reject attendance record ${row.id.slice(0, 8)}?`,
+                                confirmText: "Reject",
+                                danger: true,
+                                onConfirm: () => approveAttendanceMutation.mutate({ id: row.id, approve: false }),
+                              })
+                            }
+                            disabled={!canApproveAttendance}
+                          >
+                            Reject
+                          </Button>
+                        </Space>
+                      ),
+                    },
+                  ]}
+                  pagination={{ pageSize: 7 }}
+                />
+                <Space style={{ marginTop: 16 }}>
+                  <Select
+                    style={{ minWidth: 320 }}
+                    placeholder="Select attendance to reverse"
+                    showSearch
+                    optionFilterProp="label"
+                    value={selectedAttendance || undefined}
+                    onChange={setSelectedAttendance}
+                    options={(attendanceAll.data ?? []).map((a) => ({ value: a.id, label: `${a.id.slice(0, 8)} - ${a.status}` }))}
+                  />
+                  <Button
+                    danger
+                    icon={<IconTrash size={15} />}
+                    onClick={() =>
+                      openConfirmDialog({
+                        title: "Reverse Attendance",
+                        description: "Reverse this attendance record and mark it rejected?",
+                        confirmText: "Reverse",
+                        danger: true,
+                        onConfirm: () => reverseAttendanceMutation.mutate(),
+                      })
+                    }
+                    disabled={!selectedAttendance || !isSuperAdmin}
                   >
                     Reverse Attendance
-                  </button>
-                </div>
-              </section>
+                  </Button>
+                </Space>
+              </Card>
             )}
 
             {section === "votes" && (
-              <section className="panel">
-                <h2>Pending Vote Approvals</h2>
-                <p className="paragraph">Queue size: {votesPending.data?.length ?? 0}</p>
-                <div className="inline-form">
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => downloadReport(token!, "/reports/votes?format=csv", "voting-report.csv")}
-                  >
-                    Export Voting CSV
-                  </button>
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => downloadReport(token!, "/reports/votes?format=xlsx", "voting-report.xlsx")}
-                  >
-                    Export Voting Excel
-                  </button>
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => downloadReport(token!, "/reports/votes?format=pdf", "voting-report.pdf")}
-                  >
-                    Export Voting PDF
-                  </button>
-                </div>
-                <div className="inline-form">
-                  <select className="input" value={selectedShareholder} onChange={(e) => setSelectedShareholder(e.target.value)}>
-                    <option value="">Select shareholder</option>
-                    {shareholders.data?.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.fullNameEn}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => encodeVoteMutation.mutate()}
-                    disabled={!selectedShareholder || encodeVoteMutation.isPending || !canEncodeVote}
-                  >
+              <Card title="Pending Vote Approvals" className="vx-card">
+                <Card size="small" className="vx-card vx-subcard">
+                  <Space direction="vertical" size={2}>
+                    <Text strong>Voting Eligibility Rule</Text>
+                    <Text type="secondary">
+                      Only shareholders with approved attendance are eligible to vote and appear in the voter dropdown.
+                    </Text>
+                    <Text type="secondary">
+                      Eligible voters: {eligibleVoters.length} / {shareholders.data?.length ?? 0}
+                    </Text>
+                  </Space>
+                </Card>
+                <Space wrap style={{ marginBottom: 16 }}>
+                  {isSuperAdmin && (
+                    <>
+                      <Button icon={<IconFileTypeCsv size={16} />} onClick={() => downloadFile(token, "/reports/votes?format=csv", "voting-report.csv")}>Export CSV</Button>
+                      <Button icon={<IconFileSpreadsheet size={16} />} onClick={() => downloadFile(token, "/reports/votes?format=xlsx", "voting-report.xlsx")}>Export Excel</Button>
+                      <Button icon={<IconFileTypePdf size={16} />} onClick={() => downloadFile(token, "/reports/votes?format=pdf", "voting-report.pdf")}>Export PDF</Button>
+                    </>
+                  )}
+                </Space>
+                <Space wrap style={{ marginBottom: 16 }}>
+                  <Select
+                    style={{ minWidth: 320 }}
+                    placeholder="Select shareholder"
+                    showSearch
+                    optionFilterProp="label"
+                    value={selectedShareholder || undefined}
+                    onChange={handleVoteVoterChange}
+                    options={eligibleVoters.map((s) => ({ value: s.id, label: s.fullNameEn }))}
+                  />
+                  <Select
+                    style={{ minWidth: 320 }}
+                    placeholder="Select candidate"
+                    showSearch
+                    optionFilterProp="label"
+                    value={selectedCandidate || undefined}
+                    onChange={setSelectedCandidate}
+                    options={selectableCandidates.map((candidate) => ({ value: candidate.id, label: `${candidate.name} (${candidate.position})` }))}
+                  />
+                  <Button type="primary" icon={<IconDatabaseImport size={16} />} onClick={() => encodeVoteMutation.mutate()} disabled={!selectedShareholder || !selectedCandidate || !canEncodeVote}>
                     Encode Vote
-                  </button>
-                </div>
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Shareholder</th>
-                        <th>Candidate</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {votesPending.data?.map((v) => (
-                        <tr key={v.id}>
-                          <td>{v.id.slice(0, 8)}</td>
-                          <td>{v.shareholder_id}</td>
-                          <td>{v.candidate_id}</td>
-                          <td className="actions">
-                            <button
-                              type="button"
-                              className="text-btn"
-                              onClick={() => approveVoteMutation.mutate({ id: v.id, approve: true })}
-                              disabled={!canApproveVote}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              className="text-btn danger"
-                              onClick={() => approveVoteMutation.mutate({ id: v.id, approve: false })}
-                              disabled={!canApproveVote}
-                            >
-                              Reject
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="inline-form">
-                  <select className="input" value={selectedVote} onChange={(e) => setSelectedVote(e.target.value)}>
-                    <option value="">Select vote to reverse</option>
-                    {votesAll.data?.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.id.slice(0, 8)} - {v.status}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="action-btn danger-bg"
-                    onClick={() => reverseVoteMutation.mutate()}
-                    disabled={!selectedVote || reverseVoteMutation.isPending || !isSuperAdmin}
+                  </Button>
+                </Space>
+                <Table
+                  rowKey="id"
+                  dataSource={votesPending.data ?? []}
+                  columns={[
+                    { title: "ID", dataIndex: "id", render: (id: string) => id.slice(0, 8) },
+                    { title: "Shareholder", dataIndex: "shareholder_id" },
+                    { title: "Candidate", dataIndex: "candidate_id" },
+                    {
+                      title: "Actions",
+                      render: (_, row: VoteRow) => (
+                        <Space>
+                          <Button
+                            icon={<IconShieldCheck size={15} />}
+                            onClick={() =>
+                              openConfirmDialog({
+                                title: "Approve Vote",
+                                description: `Approve vote record ${row.id.slice(0, 8)}?`,
+                                confirmText: "Approve",
+                                onConfirm: () => approveVoteMutation.mutate({ id: row.id, approve: true }),
+                              })
+                            }
+                            disabled={!canApproveVote}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            danger
+                            onClick={() =>
+                              openConfirmDialog({
+                                title: "Reject Vote",
+                                description: `Reject vote record ${row.id.slice(0, 8)}?`,
+                                confirmText: "Reject",
+                                danger: true,
+                                onConfirm: () => approveVoteMutation.mutate({ id: row.id, approve: false }),
+                              })
+                            }
+                            disabled={!canApproveVote}
+                          >
+                            Reject
+                          </Button>
+                        </Space>
+                      ),
+                    },
+                  ]}
+                  pagination={{ pageSize: 7 }}
+                />
+                <Space style={{ marginTop: 16 }}>
+                  <Select
+                    style={{ minWidth: 320 }}
+                    placeholder="Select vote to reverse"
+                    showSearch
+                    optionFilterProp="label"
+                    value={selectedVote || undefined}
+                    onChange={setSelectedVote}
+                    options={(votesAll.data ?? []).map((v) => ({ value: v.id, label: `${v.id.slice(0, 8)} - ${v.status}` }))}
+                  />
+                  <Button
+                    danger
+                    icon={<IconTrash size={15} />}
+                    onClick={() =>
+                      openConfirmDialog({
+                        title: "Reverse Vote",
+                        description: "Reverse this vote record and mark it rejected?",
+                        confirmText: "Reverse",
+                        danger: true,
+                        onConfirm: () => reverseVoteMutation.mutate(),
+                      })
+                    }
+                    disabled={!selectedVote || !isSuperAdmin}
                   >
                     Reverse Vote
-                  </button>
-                </div>
-              </section>
+                  </Button>
+                </Space>
+              </Card>
             )}
 
             {section === "audit" && (
-              <section className="panel">
-                <h2>Latest Audit Events</h2>
-                <p className="paragraph">Recent entries: {auditLogs.data?.length ?? 0}</p>
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Time</th>
-                        <th>Module</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {auditLogs.data?.map((log) => (
-                        <tr key={log.id}>
-                          <td>{new Date(log.timestamp).toLocaleString()}</td>
-                          <td>{log.module}</td>
-                          <td>{log.action_type}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
+              <Card title="Latest Audit Events" className="vx-card">
+                <Table
+                  rowKey="id"
+                  dataSource={auditLogs.data ?? []}
+                  columns={[
+                    { title: "Time", dataIndex: "timestamp", render: (value: string) => new Date(value).toLocaleString() },
+                    {
+                      title: "Actor",
+                      render: (_, row: AuditRow) => row.actor_username ?? row.user_id ?? "System",
+                    },
+                    { title: "Module", dataIndex: "module" },
+                    { title: "Action", dataIndex: "action_type" },
+                    {
+                      title: "Maker",
+                      render: (_, row: AuditRow) => {
+                        const payload = row.new_value as
+                          | { makerUsername?: string | null; makerUserId?: string | null }
+                          | null
+                          | undefined;
+                        return payload?.makerUsername ?? payload?.makerUserId ?? "-";
+                      },
+                    },
+                    {
+                      title: "Checker",
+                      render: (_, row: AuditRow) => {
+                        const payload = row.new_value as
+                          | { checkerUsername?: string | null; checkerUserId?: string | null }
+                          | null
+                          | undefined;
+                        return payload?.checkerUsername ?? payload?.checkerUserId ?? "-";
+                      },
+                    },
+                  ]}
+                />
+              </Card>
             )}
-          </section>
-        </>
-      )}
-    </main>
+
+            {section === "settings" && (
+              <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                <Card title="Maker-Checker Controls" className="vx-card">
+                  <Descriptions column={1} size="small">
+                    <Descriptions.Item label="Attendance Maker-Checker">
+                      <Switch checked={resolvedAttendanceMakerCheckerEnabled} onChange={setAttendanceMakerCheckerEnabled} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Voting Maker-Checker">
+                      <Switch checked={resolvedVotingMakerCheckerEnabled} onChange={setVotingMakerCheckerEnabled} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Influential Auto Classification">
+                      <Switch checked={resolvedAutoClassificationEnabled} onChange={setAutoClassificationEnabled} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Influential Share Threshold">
+                      <Input
+                        value={resolvedInfluentialThreshold}
+                        onChange={(e) => setInfluentialThreshold(e.target.value)}
+                        disabled={!resolvedAutoClassificationEnabled}
+                        style={{ maxWidth: 280 }}
+                      />
+                    </Descriptions.Item>
+                    <Descriptions.Item>
+                      <Button type="primary" onClick={() => saveAdminConfigMutation.mutate()} loading={saveAdminConfigMutation.isPending}>
+                        Save Settings
+                      </Button>
+                    </Descriptions.Item>
+                  </Descriptions>
+                </Card>
+
+                <Card title="AGM Session Maintenance" className="vx-card">
+                  <Space direction="vertical" size={8}>
+                    <Text type="secondary">
+                      Start a clean AGM session by clearing operational records (attendance, votes, and nomination votes).
+                    </Text>
+                    <Button danger onClick={() => setShowResetSessionModal(true)}>
+                      Reset AGM Session Data
+                    </Button>
+                  </Space>
+                </Card>
+              </Space>
+            )}
+          </Content>
+        </Layout>
+      </Layout>
+
+      <Modal
+        title="Add Shareholder"
+        open={showCreateModal}
+        onCancel={() => setShowCreateModal(false)}
+        onOk={() => createShareholderMutation.mutate()}
+        okButtonProps={{ loading: createShareholderMutation.isPending, disabled: !shareholderName || !isSuperAdmin }}
+      >
+        <Form layout="vertical">
+          <Form.Item label="Full name">
+            <Input value={shareholderName} onChange={(e) => setShareholderName(e.target.value)} />
+          </Form.Item>
+          <Form.Item label="Shares">
+            <Input value={shareholderShares} onChange={(e) => setShareholderShares(e.target.value)} />
+          </Form.Item>
+          <Form.Item label="Influential shareholder">
+            <Switch checked={manualInfluentialFlag} onChange={setManualInfluentialFlag} disabled={resolvedAutoClassificationEnabled} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Edit Shareholder"
+        open={showEditModal}
+        onCancel={() => setShowEditModal(false)}
+        onOk={() =>
+          openConfirmDialog({
+            title: "Update Shareholder",
+            description: "Save these shareholder changes?",
+            confirmText: "Update",
+            onConfirm: () => updateShareholderMutation.mutate(),
+          })
+        }
+        okButtonProps={{ loading: updateShareholderMutation.isPending, disabled: !isSuperAdmin }}
+      >
+        <Form layout="vertical">
+          <Form.Item label="Full name">
+            <Input value={editingShareholderName} onChange={(e) => setEditingShareholderName(e.target.value)} />
+          </Form.Item>
+          <Form.Item label="Shares">
+            <Input value={editingShareholderShares} onChange={(e) => setEditingShareholderShares(e.target.value)} />
+          </Form.Item>
+          <Form.Item label="Influential shareholder">
+            <Switch checked={editingInfluentialFlag} onChange={setEditingInfluentialFlag} disabled={resolvedAutoClassificationEnabled} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Register Candidate"
+        open={showCandidateModal}
+        onCancel={() => setShowCandidateModal(false)}
+        onOk={() => createCandidateMutation.mutate()}
+        okButtonProps={{ loading: createCandidateMutation.isPending, disabled: !candidateShareholderId || !isSuperAdmin }}
+      >
+        <Form layout="vertical">
+          <Form.Item label="Candidate Shareholder">
+            <Select
+              placeholder="Select shareholder"
+              showSearch
+              optionFilterProp="label"
+              value={candidateShareholderId || undefined}
+              onChange={setCandidateShareholderId}
+              options={(shareholders.data ?? []).map((s) => ({ value: s.id, label: `${s.fullNameEn} (${s.id})` }))}
+            />
+          </Form.Item>
+          <Form.Item label="Position">
+            <Input value={candidatePosition} onChange={(e) => setCandidatePosition(e.target.value)} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Reset AGM Session Data"
+        open={showResetSessionModal}
+        onCancel={() => setShowResetSessionModal(false)}
+        onOk={() => resetSessionMutation.mutate()}
+        okButtonProps={{ danger: true, loading: resetSessionMutation.isPending }}
+        okText="Reset Session"
+      >
+        <Space direction="vertical" size={10} style={{ width: "100%" }}>
+          <Text type="secondary">
+            This clears attendance records, official votes, and candidate nomination votes for a fresh AGM cycle.
+          </Text>
+          <Checkbox checked={resetClearCandidates} onChange={(e) => setResetClearCandidates(e.target.checked)}>
+            Also deactivate all current candidates
+          </Checkbox>
+          <Checkbox checked={resetClearAuditLogs} onChange={(e) => setResetClearAuditLogs(e.target.checked)}>
+            Also clear audit log history
+          </Checkbox>
+        </Space>
+      </Modal>
+
+      <Modal
+        open={confirmDialog.open}
+        onCancel={closeConfirmDialog}
+        onOk={() => {
+          confirmDialog.onConfirm?.();
+          closeConfirmDialog();
+        }}
+        okText={confirmDialog.confirmText ?? "Confirm"}
+        okButtonProps={{ danger: confirmDialog.danger }}
+        title={null}
+      >
+        <Card className="vx-card vx-confirm-card" bordered={false}>
+          <Space direction="vertical" size={6} style={{ width: "100%" }}>
+            <Text strong style={{ fontSize: 16 }}>{confirmDialog.title}</Text>
+            <Text type="secondary">{confirmDialog.description}</Text>
+          </Space>
+        </Card>
+      </Modal>
+    </ConfigProvider>
   );
 }
 
-export default App;
+export default function AppRoot() {
+  return (
+    <AntdApp>
+      <App />
+    </AntdApp>
+  );
+}

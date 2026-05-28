@@ -23,6 +23,21 @@ export function buildDashboardSnapshot(): DashboardSnapshot {
   const votingPending = db.prepare("SELECT COUNT(*) as count FROM votes WHERE status = 'PENDING'").get() as {
     count: number;
   };
+  const votesByCandidate = db
+    .prepare(
+      `SELECT
+        c.id as candidateId,
+        COALESCE(s.full_name_en, c.name) as candidateName,
+        COALESCE(SUM(v.shares_used), 0) as totalShares,
+        COUNT(v.id) as voteCount
+      FROM candidates c
+      LEFT JOIN shareholders s ON s.id = c.shareholder_id
+      LEFT JOIN votes v ON v.candidate_id = c.id AND v.status = 'APPROVED'
+      WHERE c.is_active = 1
+      GROUP BY c.id, candidateName
+      ORDER BY totalShares DESC`
+    )
+    .all() as Array<{ candidateId: string; candidateName: string; totalShares: number; voteCount: number }>;
 
   return {
     shareholders: {
@@ -39,7 +54,7 @@ export function buildDashboardSnapshot(): DashboardSnapshot {
         ? Number(((attended.count / shareholders.total) * 100).toFixed(1))
         : 0,
     },
-    voting: { totalVotes: totalVotes.count, pendingApprovals: votingPending.count },
+    voting: { totalVotes: totalVotes.count, pendingApprovals: votingPending.count, byCandidate: votesByCandidate },
     agenda: { activeTitle: "Board Chair Election", progressPercentage: 45, pendingItems: 3 },
     updatedAt: new Date().toISOString(),
   };

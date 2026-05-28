@@ -31,8 +31,10 @@ CREATE TABLE IF NOT EXISTS shareholders (
 
 CREATE TABLE IF NOT EXISTS candidates (
   id TEXT PRIMARY KEY,
+  shareholder_id TEXT,
   name TEXT NOT NULL,
-  position TEXT NOT NULL
+  position TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS attendance_records (
@@ -57,6 +59,14 @@ CREATE TABLE IF NOT EXISTS votes (
   timestamp TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS candidate_nomination_votes (
+  id TEXT PRIMARY KEY,
+  voter_shareholder_id TEXT NOT NULL,
+  nominee_shareholder_id TEXT NOT NULL,
+  shares_used INTEGER NOT NULL,
+  timestamp TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id TEXT PRIMARY KEY,
   user_id TEXT,
@@ -69,6 +79,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   timestamp TEXT NOT NULL
 );
 `);
+
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_nomination_unique_voter ON candidate_nomination_votes(voter_shareholder_id);");
 
 const now = new Date().toISOString();
 const defaultUsers = [
@@ -116,9 +128,19 @@ if (!shareholdersCount.count) {
 }
 
 const candidatesCount = db.prepare("SELECT COUNT(*) as count FROM candidates").get() as { count: number };
+const candidateColumns = db.prepare("PRAGMA table_info(candidates)").all() as Array<{ name: string }>;
+const hasShareholderId = candidateColumns.some((column) => column.name === "shareholder_id");
+const hasIsActive = candidateColumns.some((column) => column.name === "is_active");
+if (!hasShareholderId) {
+  db.exec("ALTER TABLE candidates ADD COLUMN shareholder_id TEXT");
+}
+if (!hasIsActive) {
+  db.exec("ALTER TABLE candidates ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1");
+}
 if (!candidatesCount.count) {
-  db.prepare("INSERT INTO candidates (id, name, position) VALUES (?, ?, ?)").run(
+  db.prepare("INSERT INTO candidates (id, shareholder_id, name, position, is_active) VALUES (?, ?, ?, ?, 1)").run(
     "c-01",
+    "sh-1001",
     "Samuel Girma",
     "Board Chair"
   );
