@@ -234,6 +234,10 @@ body {
   gap: 16px;
 }
 
+.vx-full-width-card {
+  grid-column: 1 / -1;
+}
+
 .vx-quorum-wrap {
   display: flex;
   align-items: center;
@@ -248,6 +252,26 @@ body {
 .vx-vote-row {
   display: grid;
   gap: 6px;
+}
+
+.vx-agenda-item {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.vx-agenda-scroll {
+  max-height: 56vh;
+  overflow-y: auto;
+  padding-right: 4px;
+  display: grid;
+  gap: 8px;
+}
+
+.vx-agenda-item.is-active {
+  background: #f1efff;
+  border-color: #c8c1ff;
 }
 
 .vx-vote-label {
@@ -417,6 +441,11 @@ body {
 .is-dark .vx-vote-value,
 .is-dark .vx-vote-label {
   color: #b8bdd5;
+}
+
+.is-dark .vx-agenda-item.is-active {
+  background: #3a4060;
+  border-color: #7f77d8;
 }
 
 .is-dark .ant-table-wrapper .ant-table {

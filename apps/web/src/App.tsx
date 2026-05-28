@@ -30,12 +30,15 @@ import { useCallback, useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import {
   IconCheckupList,
+  IconCalendarEvent,
   IconCloudUpload,
   IconClockCheck,
   IconDatabaseImport,
   IconDownload,
   IconEdit,
   IconBell,
+  IconArrowsMaximize,
+  IconArrowsMinimize,
   IconFileSpreadsheet,
   IconFileTypeCsv,
   IconFileTypePdf,
@@ -67,7 +70,7 @@ const LANGUAGE_KEY = "shmmf_language";
 
 type ThemeMode = "light" | "dark";
 type Language = "en" | "am";
-type Section = "dashboard" | "shareholders" | "candidates" | "attendance" | "votes" | "audit" | "settings";
+type Section = "dashboard" | "shareholders" | "candidates" | "agendas" | "attendance" | "votes" | "audit" | "settings";
 
 const i18n: Record<string, { en: string; am: string }> = {
   Dashboard: { en: "Dashboard", am: "ዳሽቦርድ" },
@@ -195,6 +198,15 @@ interface CandidateNominationResultRow {
   nomineeName: string;
   totalShares: number;
   voteCount: number;
+}
+interface AgendaRow {
+  id: string;
+  title: string;
+  details: string | null;
+  agenda_date: string;
+  sort_order: number;
+  is_active: number;
+  created_at: string;
 }
 interface ConfirmDialogState {
   open: boolean;
@@ -328,6 +340,14 @@ function App() {
   const [autoClassificationEnabled, setAutoClassificationEnabled] = useState<boolean | null>(null);
   const [influentialThreshold, setInfluentialThreshold] = useState("");
   const [bulkRowsPreview, setBulkRowsPreview] = useState<BulkRowInput[]>([]);
+  const [showAgendaModal, setShowAgendaModal] = useState(false);
+  const [editingAgendaId, setEditingAgendaId] = useState("");
+  const [agendaTitleInput, setAgendaTitleInput] = useState("");
+  const [agendaDetailsInput, setAgendaDetailsInput] = useState("");
+  const [agendaDateInput, setAgendaDateInput] = useState(new Date().toISOString().slice(0, 10));
+  const [agendaSortOrderInput, setAgendaSortOrderInput] = useState("0");
+  const [agendaActiveInput, setAgendaActiveInput] = useState(false);
+  const [showAgendaFullscreen, setShowAgendaFullscreen] = useState(false);
   const [showResetSessionModal, setShowResetSessionModal] = useState(false);
   const [resetClearCandidates, setResetClearCandidates] = useState(false);
   const [resetClearAuditLogs, setResetClearAuditLogs] = useState(false);
@@ -406,6 +426,11 @@ function App() {
     queryFn: () => fetchList<ShareholderRow>(token!, "/candidate-nominations/eligible-voters"),
     enabled: Boolean(token),
   });
+  const agendas = useQuery({
+    queryKey: ["agendas", token],
+    queryFn: () => fetchList<AgendaRow>(token!, "/agendas"),
+    enabled: Boolean(token),
+  });
   const auditLogs = useQuery({
     queryKey: ["audit", token],
     queryFn: () => fetchList<AuditRow>(token!, "/audit-logs"),
@@ -433,6 +458,7 @@ function App() {
     queryClient.invalidateQueries({ queryKey: ["candidates", token] });
     queryClient.invalidateQueries({ queryKey: ["candidate-nominations-results", token] });
     queryClient.invalidateQueries({ queryKey: ["candidate-nominations-eligible-voters", token] });
+    queryClient.invalidateQueries({ queryKey: ["agendas", token] });
     queryClient.invalidateQueries({ queryKey: ["audit", token] });
     queryClient.invalidateQueries({ queryKey: ["config", token] });
   }, [queryClient, token]);
@@ -565,6 +591,76 @@ function App() {
       message.error(t("Could not promote nominee."));
     },
   });
+  const createAgendaMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${API_BASE}/agendas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: agendaTitleInput,
+          details: agendaDetailsInput || undefined,
+          agendaDate: agendaDateInput,
+          sortOrder: Number(agendaSortOrderInput || 0),
+          isActive: agendaActiveInput,
+        }),
+      });
+      if (!res.ok) throw new Error("Unable to create agenda");
+    },
+    onSuccess: () => {
+      setShowAgendaModal(false);
+      setEditingAgendaId("");
+      setAgendaTitleInput("");
+      setAgendaDetailsInput("");
+      setAgendaDateInput(new Date().toISOString().slice(0, 10));
+      setAgendaSortOrderInput("0");
+      setAgendaActiveInput(false);
+      refreshAll();
+      message.success("Agenda created.");
+    },
+    onError: () => message.error("Could not create agenda."),
+  });
+  const updateAgendaMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${API_BASE}/agendas/${editingAgendaId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: agendaTitleInput,
+          details: agendaDetailsInput || undefined,
+          agendaDate: agendaDateInput,
+          sortOrder: Number(agendaSortOrderInput || 0),
+          isActive: agendaActiveInput,
+        }),
+      });
+      if (!res.ok) throw new Error("Unable to update agenda");
+    },
+    onSuccess: () => {
+      setShowAgendaModal(false);
+      setEditingAgendaId("");
+      setAgendaTitleInput("");
+      setAgendaDetailsInput("");
+      setAgendaDateInput(new Date().toISOString().slice(0, 10));
+      setAgendaSortOrderInput("0");
+      setAgendaActiveInput(false);
+      refreshAll();
+      message.success("Agenda updated.");
+    },
+    onError: () => message.error("Could not update agenda."),
+  });
+  const deleteAgendaMutation = useMutation({
+    mutationFn: (id: string) => deleteAuthorized(token!, `/agendas/${id}`),
+    onSuccess: () => {
+      refreshAll();
+      message.success("Agenda deleted.");
+    },
+  });
+  const activateAgendaMutation = useMutation({
+    mutationFn: (id: string) => postAuthorized(token!, `/agendas/${id}/activate`, {}),
+    onSuccess: () => {
+      refreshAll();
+      message.success("Agenda activated.");
+    },
+  });
   const saveAdminConfigMutation = useMutation({
     mutationFn: async () => {
       await fetch(`${API_BASE}/config`, {
@@ -663,6 +759,7 @@ function App() {
     { key: "dashboard", label: t("Dashboard"), icon: <IconLayoutDashboard size={16} />, visible: true },
     { key: "shareholders", label: t("Shareholders"), icon: <IconUsers size={16} />, visible: isSuperAdmin },
     { key: "candidates", label: t("Candidates"), icon: <IconUserStar size={16} />, visible: isSuperAdmin },
+    { key: "agendas", label: "Agendas", icon: <IconCalendarEvent size={16} />, visible: isSuperAdmin },
     {
       key: "attendance",
       label: t("Attendance"),
@@ -767,6 +864,9 @@ function App() {
   const selectableNomineeShareholders = (shareholders.data ?? []).filter(
     (shareholder) => !nominationVoterShareholderId || shareholder.id !== nominationVoterShareholderId
   );
+  const todayAgendaItems = (agendas.data ?? [])
+    .filter((agenda) => agenda.agenda_date === new Date().toISOString().slice(0, 10))
+    .sort((a, b) => a.sort_order - b.sort_order);
   const handleVoteVoterChange = (nextVoterId: string) => {
     setSelectedShareholder(nextVoterId);
     const selectedCandidateEntry = (candidates.data ?? []).find((candidate) => candidate.id === selectedCandidate);
@@ -783,6 +883,25 @@ function App() {
   const openConfirmDialog = (options: Omit<ConfirmDialogState, "open">) => {
     setConfirmDialog({ open: true, ...options });
   };
+  const renderAgendaList = (expanded = false) => (
+    <Space direction="vertical" size={8} style={{ width: "100%" }}>
+      <Tag color="purple">Active: {dashboard.data?.agenda.activeTitle ?? "-"}</Tag>
+      <div className={expanded ? "vx-agenda-scroll" : undefined}>
+        {todayAgendaItems.map((agenda) => (
+          <div
+            key={agenda.id}
+            className={`vx-vote-row vx-agenda-item ${agenda.is_active === 1 ? "is-active" : ""}`}
+          >
+            <div className="vx-vote-label">
+              <strong>{agenda.title}</strong>
+              {agenda.is_active === 1 ? <Tag color="green">In Discussion</Tag> : <Tag>Pending</Tag>}
+            </div>
+            {agenda.details && <Text type="secondary">{agenda.details}</Text>}
+          </div>
+        ))}
+      </div>
+    </Space>
+  );
   const closeConfirmDialog = () => {
     setConfirmDialog({ open: false, title: "", description: "", onConfirm: undefined });
   };
@@ -999,6 +1118,20 @@ function App() {
                         );
                       })}
                     </div>
+                  </Card>
+                  <Card
+                    title="Today's Agenda"
+                    className="vx-card vx-full-width-card"
+                    extra={
+                      <Button
+                        icon={<IconArrowsMaximize size={15} />}
+                        onClick={() => setShowAgendaFullscreen(true)}
+                      >
+                        Fullscreen
+                      </Button>
+                    }
+                  >
+                    {renderAgendaList()}
                   </Card>
                 </div>
               </Space>
@@ -1222,6 +1355,92 @@ function App() {
                         >
                           Remove
                         </Button>
+                      ),
+                    },
+                  ]}
+                  pagination={{ pageSize: 8 }}
+                />
+              </Card>
+            )}
+
+            {section === "agendas" && (
+              <Card title="Agenda Management" className="vx-card">
+                <Space wrap style={{ marginBottom: 16 }}>
+                  <Button
+                    type="primary"
+                    icon={<IconCalendarEvent size={16} />}
+                    onClick={() => {
+                      setEditingAgendaId("");
+                      setAgendaTitleInput("");
+                      setAgendaDetailsInput("");
+                      setAgendaDateInput(new Date().toISOString().slice(0, 10));
+                      setAgendaSortOrderInput("0");
+                      setAgendaActiveInput(false);
+                      setShowAgendaModal(true);
+                    }}
+                    disabled={!isSuperAdmin}
+                  >
+                    Create Agenda
+                  </Button>
+                </Space>
+                <Table
+                  rowKey="id"
+                  dataSource={agendas.data ?? []}
+                  columns={[
+                    { title: "Title", dataIndex: "title" },
+                    { title: "Date", dataIndex: "agenda_date" },
+                    { title: "Order", dataIndex: "sort_order" },
+                    {
+                      title: "Status",
+                      render: (_, row: AgendaRow) => (row.is_active === 1 ? <Tag color="green">Active</Tag> : <Tag>Pending</Tag>),
+                    },
+                    {
+                      title: "Actions",
+                      render: (_, row: AgendaRow) => (
+                        <Space>
+                          <Button
+                            icon={<IconEdit size={15} />}
+                            onClick={() => {
+                              setEditingAgendaId(row.id);
+                              setAgendaTitleInput(row.title);
+                              setAgendaDetailsInput(row.details ?? "");
+                              setAgendaDateInput(row.agenda_date);
+                              setAgendaSortOrderInput(String(row.sort_order));
+                              setAgendaActiveInput(row.is_active === 1);
+                              setShowAgendaModal(true);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            onClick={() =>
+                              openConfirmDialog({
+                                title: "Set Active Agenda",
+                                description: `Mark "${row.title}" as active discussion agenda?`,
+                                confirmText: "Set Active",
+                                onConfirm: () => activateAgendaMutation.mutate(row.id),
+                              })
+                            }
+                            disabled={row.is_active === 1}
+                          >
+                            Set Active
+                          </Button>
+                          <Button
+                            danger
+                            icon={<IconTrash size={15} />}
+                            onClick={() =>
+                              openConfirmDialog({
+                                title: "Delete Agenda",
+                                description: `Delete agenda "${row.title}"?`,
+                                confirmText: "Delete",
+                                danger: true,
+                                onConfirm: () => deleteAgendaMutation.mutate(row.id),
+                              })
+                            }
+                          >
+                            Delete
+                          </Button>
+                        </Space>
                       ),
                     },
                   ]}
@@ -1492,7 +1711,7 @@ function App() {
 
             {section === "settings" && (
               <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-              <Card title={t("Maker-Checker Controls")} className="vx-card">
+                <Card title={t("Maker-Checker Controls")} className="vx-card">
                   <Descriptions column={1} size="small">
                     <Descriptions.Item label="Attendance Maker-Checker">
                       <Switch checked={resolvedAttendanceMakerCheckerEnabled} onChange={setAttendanceMakerCheckerEnabled} />
@@ -1607,6 +1826,36 @@ function App() {
       </Modal>
 
       <Modal
+        title={editingAgendaId ? "Edit Agenda" : "Create Agenda"}
+        open={showAgendaModal}
+        onCancel={() => setShowAgendaModal(false)}
+        onOk={() => (editingAgendaId ? updateAgendaMutation.mutate() : createAgendaMutation.mutate())}
+        okText={editingAgendaId ? "Update Agenda" : "Create Agenda"}
+        okButtonProps={{
+          loading: createAgendaMutation.isPending || updateAgendaMutation.isPending,
+          disabled: !agendaTitleInput.trim(),
+        }}
+      >
+        <Form layout="vertical">
+          <Form.Item label="Agenda Title">
+            <Input value={agendaTitleInput} onChange={(e) => setAgendaTitleInput(e.target.value)} />
+          </Form.Item>
+          <Form.Item label="Details">
+            <Input.TextArea rows={3} value={agendaDetailsInput} onChange={(e) => setAgendaDetailsInput(e.target.value)} />
+          </Form.Item>
+          <Form.Item label="Agenda Date">
+            <Input type="date" value={agendaDateInput} onChange={(e) => setAgendaDateInput(e.target.value)} />
+          </Form.Item>
+          <Form.Item label="Display Order">
+            <Input value={agendaSortOrderInput} onChange={(e) => setAgendaSortOrderInput(e.target.value)} />
+          </Form.Item>
+          <Form.Item label="Mark as Active">
+            <Switch checked={agendaActiveInput} onChange={setAgendaActiveInput} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
         title={t("Reset AGM Session Data")}
         open={showResetSessionModal}
         onCancel={() => setShowResetSessionModal(false)}
@@ -1625,6 +1874,22 @@ function App() {
             Also clear audit log history
           </Checkbox>
         </Space>
+      </Modal>
+
+      <Modal
+        title="Today's Agenda"
+        open={showAgendaFullscreen}
+        onCancel={() => setShowAgendaFullscreen(false)}
+        footer={null}
+        width="80vw"
+        styles={{ body: { maxHeight: "70vh", overflow: "hidden" } }}
+      >
+        <Space style={{ width: "100%", justifyContent: "flex-end", marginBottom: 8 }}>
+          <Button icon={<IconArrowsMinimize size={15} />} onClick={() => setShowAgendaFullscreen(false)}>
+            Back to Dashboard
+          </Button>
+        </Space>
+        {renderAgendaList(true)}
       </Modal>
 
       <Modal

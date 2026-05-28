@@ -39,6 +39,16 @@ CREATE TABLE IF NOT EXISTS candidates (
   is_active INTEGER NOT NULL DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS agendas (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  details TEXT,
+  agenda_date TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS attendance_records (
   id TEXT PRIMARY KEY,
   shareholder_id TEXT NOT NULL,
@@ -145,6 +155,32 @@ if (!candidatesCount.count) {
     "sh-1001",
     "Samuel Girma",
     "Board Chair"
+  );
+}
+
+const agendasCount = db.prepare("SELECT COUNT(*) as count FROM agendas").get() as { count: number };
+if (!agendasCount.count) {
+  db.prepare(
+    "INSERT INTO agendas (id, title, details, agenda_date, sort_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(
+    "ag-01",
+    "Board Chair Election",
+    "Election process and vote validation for the board chair role.",
+    now.slice(0, 10),
+    1,
+    1,
+    now
+  );
+  db.prepare(
+    "INSERT INTO agendas (id, title, details, agenda_date, sort_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(
+    "ag-02",
+    "Annual Financial Review",
+    "Presentation and discussion of annual financial reports.",
+    now.slice(0, 10),
+    2,
+    0,
+    now
   );
 }
 

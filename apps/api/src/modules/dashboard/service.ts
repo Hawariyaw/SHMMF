@@ -38,6 +38,18 @@ export function buildDashboardSnapshot(): DashboardSnapshot {
       ORDER BY totalShares DESC`
     )
     .all() as Array<{ candidateId: string; candidateName: string; totalShares: number; voteCount: number }>;
+  const activeAgenda = db
+    .prepare(
+      "SELECT id, title FROM agendas WHERE is_active = 1 ORDER BY sort_order ASC, created_at DESC LIMIT 1"
+    )
+    .get() as { id: string; title: string } | undefined;
+  const today = new Date().toISOString().slice(0, 10);
+  const todayAgendaCount = db
+    .prepare("SELECT COUNT(*) as count FROM agendas WHERE agenda_date = ?")
+    .get(today) as { count: number };
+  const pendingAgendaCount = db
+    .prepare("SELECT COUNT(*) as count FROM agendas WHERE agenda_date = ? AND is_active = 0")
+    .get(today) as { count: number };
 
   return {
     shareholders: {
@@ -55,7 +67,13 @@ export function buildDashboardSnapshot(): DashboardSnapshot {
         : 0,
     },
     voting: { totalVotes: totalVotes.count, pendingApprovals: votingPending.count, byCandidate: votesByCandidate },
-    agenda: { activeTitle: "Board Chair Election", progressPercentage: 45, pendingItems: 3 },
+    agenda: {
+      activeTitle: activeAgenda?.title ?? "No active agenda",
+      progressPercentage: todayAgendaCount.count
+        ? Number(((todayAgendaCount.count - pendingAgendaCount.count) / todayAgendaCount.count * 100).toFixed(1))
+        : 0,
+      pendingItems: pendingAgendaCount.count,
+    },
     updatedAt: new Date().toISOString(),
   };
 }

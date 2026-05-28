@@ -128,6 +128,146 @@ export function registerRoutes(app: Express): void {
     res.json(buildDashboardSnapshot());
   });
 
+  app.get("/api/v1/agendas", requireAuth, (req, res) => {
+    const date = typeof req.query.date === "string" ? req.query.date : undefined;
+    const rows = date
+      ? db
+          .prepare(
+            "SELECT id, title, details, agenda_date, sort_order, is_active, created_at FROM agendas WHERE agenda_date = ? ORDER BY sort_order ASC, created_at ASC"
+          )
+          .all(date)
+      : db
+          .prepare(
+            "SELECT id, title, details, agenda_date, sort_order, is_active, created_at FROM agendas ORDER BY agenda_date DESC, sort_order ASC, created_at ASC"
+          )
+          .all();
+    res.json(rows);
+  });
+
+  app.post("/api/v1/agendas", requireAuth, requireRoles(["SUPER_ADMIN"]), (req: AuthenticatedRequest, res) => {
+    const parsed = z
+      .object({
+        title: z.string().transform(normalizeText).pipe(z.string().min(2)),
+        details: z.string().transform(normalizeText).optional(),
+        agendaDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        sortOrder: z.number().int().nonnegative().optional(),
+        isActive: z.boolean().optional(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+      return;
+    }
+    if (parsed.data.isActive) {
+      db.prepare("UPDATE agendas SET is_active = 0").run();
+    }
+    const id = `ag-${randomUUID().slice(0, 8)}`;
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      "INSERT INTO agendas (id, title, details, agenda_date, sort_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(
+      id,
+      parsed.data.title,
+      parsed.data.details ?? null,
+      parsed.data.agendaDate,
+      parsed.data.sortOrder ?? 0,
+      parsed.data.isActive ? 1 : 0,
+      createdAt
+    );
+    writeAuditLog({
+      userId: req.user?.id,
+      actionType: "AGENDA_CREATE",
+      module: "AGENDA",
+      newValue: { id, ...parsed.data },
+      req,
+    });
+    emitDashboardRefresh("agenda-created");
+    res.status(201).json({ id });
+  });
+
+  app.put("/api/v1/agendas/:id", requireAuth, requireRoles(["SUPER_ADMIN"]), (req: AuthenticatedRequest, res) => {
+    const parsed = z
+      .object({
+        title: z.string().transform(normalizeText).pipe(z.string().min(2)),
+        details: z.string().transform(normalizeText).optional(),
+        agendaDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        sortOrder: z.number().int().nonnegative().optional(),
+        isActive: z.boolean().optional(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+      return;
+    }
+    const agendaId = readParam(req.params.id);
+    const existing = db.prepare("SELECT id FROM agendas WHERE id = ?").get(agendaId) as { id: string } | undefined;
+    if (!existing) {
+      res.status(404).json({ message: "Agenda not found" });
+      return;
+    }
+    if (parsed.data.isActive) {
+      db.prepare("UPDATE agendas SET is_active = 0").run();
+    }
+    db.prepare(
+      "UPDATE agendas SET title = ?, details = ?, agenda_date = ?, sort_order = ?, is_active = ? WHERE id = ?"
+    ).run(
+      parsed.data.title,
+      parsed.data.details ?? null,
+      parsed.data.agendaDate,
+      parsed.data.sortOrder ?? 0,
+      parsed.data.isActive ? 1 : 0,
+      agendaId
+    );
+    writeAuditLog({
+      userId: req.user?.id,
+      actionType: "AGENDA_UPDATE",
+      module: "AGENDA",
+      newValue: { id: agendaId, ...parsed.data },
+      req,
+    });
+    emitDashboardRefresh("agenda-updated");
+    res.json({ ok: true });
+  });
+
+  app.post("/api/v1/agendas/:id/activate", requireAuth, requireRoles(["SUPER_ADMIN"]), (req: AuthenticatedRequest, res) => {
+    const agendaId = readParam(req.params.id);
+    const existing = db.prepare("SELECT id FROM agendas WHERE id = ?").get(agendaId) as { id: string } | undefined;
+    if (!existing) {
+      res.status(404).json({ message: "Agenda not found" });
+      return;
+    }
+    db.prepare("UPDATE agendas SET is_active = 0").run();
+    db.prepare("UPDATE agendas SET is_active = 1 WHERE id = ?").run(agendaId);
+    writeAuditLog({
+      userId: req.user?.id,
+      actionType: "AGENDA_ACTIVATE",
+      module: "AGENDA",
+      newValue: { id: agendaId },
+      req,
+    });
+    emitDashboardRefresh("agenda-activated");
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/v1/agendas/:id", requireAuth, requireRoles(["SUPER_ADMIN"]), (req: AuthenticatedRequest, res) => {
+    const agendaId = readParam(req.params.id);
+    const existing = db.prepare("SELECT id FROM agendas WHERE id = ?").get(agendaId) as { id: string } | undefined;
+    if (!existing) {
+      res.status(404).json({ message: "Agenda not found" });
+      return;
+    }
+    db.prepare("DELETE FROM agendas WHERE id = ?").run(agendaId);
+    writeAuditLog({
+      userId: req.user?.id,
+      actionType: "AGENDA_DELETE",
+      module: "AGENDA",
+      newValue: { id: agendaId },
+      req,
+    });
+    emitDashboardRefresh("agenda-deleted");
+    res.status(204).send();
+  });
+
   app.get("/api/v1/shareholders", requireAuth, (req, res) => {
     const query = typeof req.query.q === "string" ? req.query.q : undefined;
     res.json(getShareholders(query));
