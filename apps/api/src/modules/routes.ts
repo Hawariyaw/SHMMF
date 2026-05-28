@@ -42,6 +42,10 @@ function resolveInfluentialFlag(manualFlag: boolean | undefined, shares: number)
   return Boolean(manualFlag);
 }
 
+function normalizeText(value: string): string {
+  return value.normalize("NFC").trim();
+}
+
 function getUsernameById(userId: string | undefined): string | null {
   if (!userId) return null;
   const user = db.prepare("SELECT username FROM users WHERE id = ?").get(userId) as { username: string } | undefined;
@@ -230,7 +234,7 @@ export function registerRoutes(app: Express): void {
     const parsed = z
       .object({
         shareholderId: z.string(),
-        position: z.string().min(2).default("Board Member"),
+        position: z.string().transform(normalizeText).pipe(z.string().min(2)).default("Board Member"),
       })
       .safeParse(req.body);
     if (!parsed.success) {
@@ -397,6 +401,7 @@ export function registerRoutes(app: Express): void {
     (req: AuthenticatedRequest, res) => {
       const parsed = z
         .object({ nomineeShareholderId: z.string(), position: z.string().min(2).default("Board Member") })
+      .transform((data) => ({ ...data, position: normalizeText(data.position) }))
         .safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });

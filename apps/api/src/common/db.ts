@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 
 const db = new Database("shmmf.sqlite");
 db.pragma("journal_mode = WAL");
+// SQLite stores TEXT as Unicode; keep DB encoding explicit for clarity.
+db.pragma("encoding = 'UTF-8'");
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (

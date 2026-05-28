@@ -9,12 +9,24 @@ import {
   updateShareholder,
 } from "./repository";
 
+function normalizeText(value: string): string {
+  return value.normalize("NFC").trim();
+}
+
 export const shareholderSchema = z.object({
-  fullNameEn: z.string().min(2),
-  fullNameAm: z.string().optional(),
+  fullNameEn: z.string().transform(normalizeText).pipe(z.string().min(2)),
+  fullNameAm: z
+    .string()
+    .transform((value) => normalizeText(value))
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
   shares: z.number().int().positive(),
   isHighPower: z.boolean().optional(),
-  contactInfo: z.string().optional(),
+  contactInfo: z
+    .string()
+    .transform((value) => normalizeText(value))
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
 });
 
 export function getShareholders(query?: string): Shareholder[] {
