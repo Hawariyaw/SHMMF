@@ -63,7 +63,10 @@ import * as XLSX from "xlsx";
 const { Header, Content, Sider } = Layout;
 const { Title, Text } = Typography;
 
-const API_BASE = "http://localhost:4000/api/v1";
+const API_HOST = import.meta.env.VITE_API_HOST?.trim() || window.location.hostname || "localhost";
+const API_PORT = import.meta.env.VITE_API_PORT?.trim() || "4000";
+const API_ORIGIN = import.meta.env.VITE_API_ORIGIN?.trim() || `http://${API_HOST}:${API_PORT}`;
+const API_BASE = `${API_ORIGIN}/api/v1`;
 const STORAGE_KEY = "shmmf_auth_session";
 const THEME_KEY = "shmmf_theme";
 const LANGUAGE_KEY = "shmmf_language";
@@ -748,7 +751,7 @@ function App() {
   }, [language]);
   useEffect(() => {
     if (!token) return;
-    const socket = io("http://localhost:4000");
+    const socket = io(API_ORIGIN);
     socket.on("dashboard:refresh", refreshAll);
     return () => {
       socket.disconnect();
