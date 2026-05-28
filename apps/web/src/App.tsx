@@ -54,7 +54,7 @@ import {
   IconSun,
   IconTrophy,
   IconTrash,
-  IconTerminal2,
+  IconUsersGroup,
   IconUserPlus,
   IconUserStar,
   IconUsers,
@@ -1042,9 +1042,9 @@ function App() {
       <Layout className={`vx-app ${themeMode === "dark" ? "is-dark" : ""}`}>
         <Sider width={264} className="vx-sider">
           <div className="vx-brand">
-            <Space size={8}>
-              <IconTerminal2 size={18} color="#ffffff" />
-              <Title level={5} style={{ color: "#fff", margin: 0 }}>SHMMF Console</Title>
+            <Space size={8} align="center">
+              <IconUsersGroup size={24} color="#ffffff" />
+              <Title level={5} style={{ color: "#fff", margin: 0, lineHeight: 1 }}>SHMMF Console</Title>
             </Space>
           </div>
           <Menu
