@@ -63,9 +63,95 @@ const { Title, Text } = Typography;
 const API_BASE = "http://localhost:4000/api/v1";
 const STORAGE_KEY = "shmmf_auth_session";
 const THEME_KEY = "shmmf_theme";
+const LANGUAGE_KEY = "shmmf_language";
 
 type ThemeMode = "light" | "dark";
+type Language = "en" | "am";
 type Section = "dashboard" | "shareholders" | "candidates" | "attendance" | "votes" | "audit" | "settings";
+
+const i18n: Record<string, { en: string; am: string }> = {
+  Dashboard: { en: "Dashboard", am: "ዳሽቦርድ" },
+  Shareholders: { en: "Shareholders", am: "ባለአክሲዮኖች" },
+  Candidates: { en: "Candidates", am: "እጩዎች" },
+  Attendance: { en: "Attendance", am: "መገኘት" },
+  Votes: { en: "Votes", am: "ድምጾች" },
+  "Audit Logs": { en: "Audit Logs", am: "ኦዲት መዝገቦች" },
+  Settings: { en: "Settings", am: "ቅንብሮች" },
+  Login: { en: "Login", am: "ግባ" },
+  "Welcome back": { en: "Welcome back", am: "እንኳን ደህና መጡ" },
+  Username: { en: "Username", am: "የተጠቃሚ ስም" },
+  Password: { en: "Password", am: "የይለፍ ቃል" },
+  "Remember me": { en: "Remember me", am: "አስታውሰኝ" },
+  "Register Candidate": { en: "Register Candidate", am: "እጩ መዝግብ" },
+  "Save Settings": { en: "Save Settings", am: "ቅንብሮችን አስቀምጥ" },
+  "Reset AGM Session Data": { en: "Reset AGM Session Data", am: "የAGM ክፍለ-ጊዜ መረጃ አጥፋ" },
+  "Mark Attendance": { en: "Mark Attendance", am: "መገኘት መዝግብ" },
+  Approve: { en: "Approve", am: "አፅድቅ" },
+  Reject: { en: "Reject", am: "አትቀበል" },
+  "Reverse Attendance": { en: "Reverse Attendance", am: "መገኘት ቀይር" },
+  "Encode Vote": { en: "Encode Vote", am: "ድምጽ መዝግብ" },
+  "Reverse Vote": { en: "Reverse Vote", am: "ድምጽ ቀይር" },
+  "Latest Audit Events": { en: "Latest Audit Events", am: "የቅርብ ኦዲት ክስተቶች" },
+  Time: { en: "Time", am: "ጊዜ" },
+  Actor: { en: "Actor", am: "ፈጻሚ" },
+  Module: { en: "Module", am: "ሞጁል" },
+  Action: { en: "Action", am: "እርምጃ" },
+  Maker: { en: "Maker", am: "ፈጻሚ (Maker)" },
+  Checker: { en: "Checker", am: "ፈታሽ (Checker)" },
+  "Total Number of Shareholders": { en: "Total Number of Shareholders", am: "ጠቅላላ የባለአክሲዮኖች ብዛት" },
+  "Total Shares": { en: "Total Shares", am: "ጠቅላላ ሼሮች" },
+  "Number of Influential Shareholders": { en: "Number of Influential Shareholders", am: "ተፅዕኖ ያላቸው ባለአክሲዮኖች ብዛት" },
+  "Number of Non-Influential Shareholders": { en: "Number of Non-Influential Shareholders", am: "ተፅዕኖ የሌላቸው ባለአክሲዮኖች ብዛት" },
+  "Votes by Candidate (Weighted by Shares)": { en: "Votes by Candidate (Weighted by Shares)", am: "በእጩ የተመዘነ ድምጽ (በሼር መሰረት)" },
+  "Quorum Progress": { en: "Quorum Progress", am: "የኮረም ሂደት" },
+  "Add Shareholder": { en: "Add Shareholder", am: "ባለአክሲዮን ጨምር" },
+  "Download Template": { en: "Download Template", am: "ቴምፕሌት አውርድ" },
+  "Upload Template": { en: "Upload Template", am: "ቴምፕሌት አስገባ" },
+  "Import Rows": { en: "Import Rows", am: "ረድፎችን አስመጣ" },
+  Edit: { en: "Edit", am: "አርትዕ" },
+  Delete: { en: "Delete", am: "ሰርዝ" },
+  Remove: { en: "Remove", am: "አስወግድ" },
+  "Pending Attendance Approvals": { en: "Pending Attendance Approvals", am: "በመጠባበቅ ላይ ያሉ የመገኘት ፍቃዶች" },
+  "Pending Vote Approvals": { en: "Pending Vote Approvals", am: "በመጠባበቅ ላይ ያሉ የድምጽ ፍቃዶች" },
+  "Select shareholder": { en: "Select shareholder", am: "ባለአክሲዮን ይምረጡ" },
+  "Select candidate": { en: "Select candidate", am: "እጩ ይምረጡ" },
+  "Cast Nomination Vote": { en: "Cast Nomination Vote", am: "የእጩ ድምጽ ይስጡ" },
+  "Nomination Results Dashboard": { en: "Nomination Results Dashboard", am: "የእጩ ውጤት ዳሽቦርድ" },
+  "Promote to Candidate": { en: "Promote to Candidate", am: "ወደ እጩ አሻሽል" },
+  "Maker-Checker Controls": { en: "Maker-Checker Controls", am: "የMaker-Checker መቆጣጠሪያዎች" },
+  "AGM Session Maintenance": { en: "AGM Session Maintenance", am: "የAGM ክፍለ-ጊዜ ጥገና" },
+  "Reset Session": { en: "Reset Session", am: "ክፍለ-ጊዜን አድስ" },
+  "Live Session": { en: "Live Session", am: "ቀጥታ ክፍለ-ጊዜ" },
+  "Export CSV": { en: "Export CSV", am: "CSV አውጣ" },
+  "Export Excel": { en: "Export Excel", am: "Excel አውጣ" },
+  "Export PDF": { en: "Export PDF", am: "PDF አውጣ" },
+  Position: { en: "Position", am: "የስራ መደብ" },
+  "Login failed. Check credentials.": { en: "Login failed. Check credentials.", am: "መግቢያ አልተሳካም። መረጃዎን ያረጋግጡ።" },
+  "Shareholder added.": { en: "Shareholder added.", am: "ባለአክሲዮኑ ተጨምሯል።" },
+  "Shareholder updated.": { en: "Shareholder updated.", am: "ባለአክሲዮኑ ተሻሽሏል።" },
+  "Shareholder removed.": { en: "Shareholder removed.", am: "ባለአክሲዮኑ ተወግዷል።" },
+  "Bulk shareholders imported.": { en: "Bulk shareholders imported.", am: "ብዙ ባለአክሲዮኖች በተሳካ ሁኔታ ገብተዋል።" },
+  "Candidate registered.": { en: "Candidate registered.", am: "እጩው ተመዝግቧል።" },
+  "Could not register candidate.": { en: "Could not register candidate.", am: "እጩ መመዝገብ አልተቻለም።" },
+  "Candidate removed.": { en: "Candidate removed.", am: "እጩው ተወግዷል።" },
+  "Nomination vote recorded.": { en: "Nomination vote recorded.", am: "የእጩ ድምጽ ተመዝግቧል።" },
+  "Could not record nomination vote.": { en: "Could not record nomination vote.", am: "የእጩ ድምጽ መመዝገብ አልተቻለም።" },
+  "Nominee promoted to official candidate.": { en: "Nominee promoted to official candidate.", am: "ተመራጩ ወደ ኦፊሴላዊ እጩ ተሻሽሏል።" },
+  "Could not promote nominee.": { en: "Could not promote nominee.", am: "ተመራጩን ማሻሻል አልተቻለም።" },
+  "Settings saved.": { en: "Settings saved.", am: "ቅንብሮች ተቀምጠዋል።" },
+  "AGM session data cleared.": { en: "AGM session data cleared.", am: "የAGM ክፍለ-ጊዜ መረጃ ተሰርዟል።" },
+  "Could not clear AGM session data.": { en: "Could not clear AGM session data.", am: "የAGM መረጃ ማጥፋት አልተቻለም።" },
+  "Attendance marked.": { en: "Attendance marked.", am: "መገኘት ተመዝግቧል።" },
+  "No valid rows found in uploaded file.": { en: "No valid rows found in uploaded file.", am: "በተጫነው ፋይል ውስጥ ትክክለኛ ረድፎች አልተገኙም።" },
+  "Failed to parse spreadsheet.": { en: "Failed to parse spreadsheet.", am: "የSpreadsheet ፋይሉን ማንበብ አልተቻለም።" },
+  "Welcome to SHMMF": { en: "Welcome to SHMMF", am: "ወደ SHMMF እንኳን ደህና መጡ" },
+  "A polished AGM operations suite for compliant workflows and approvals.": {
+    en: "A polished AGM operations suite for compliant workflows and approvals.",
+    am: "ለተግባራዊ ሂደቶች እና ማፅደቂያዎች የተሻለ የAGM ኦፕሬሽን መድረክ።",
+  },
+  "Quorum +8.2%": { en: "Quorum +8.2%", am: "ኮረም +8.2%" },
+  "Votes 12.4k": { en: "Votes 12.4k", am: "ድምጾች 12.4k" },
+};
 
 interface LoginResponse {
   token: string;
@@ -206,6 +292,7 @@ function App() {
   const [password, setPassword] = useState("admin1234");
   const [rememberMe, setRememberMe] = useState(true);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => (localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"));
+  const [language, setLanguage] = useState<Language>(() => (localStorage.getItem(LANGUAGE_KEY) === "am" ? "am" : "en"));
   const [session, setSession] = useState<LoginResponse | null>(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -260,6 +347,7 @@ function App() {
   const canEncodeVote = role === "SUPER_ADMIN" || role === "VOTE_ENCODER";
   const canApproveVote = role === "SUPER_ADMIN" || role === "VOTE_CHECKER";
   const canViewAudit = role === "SUPER_ADMIN";
+  const t = (text: string): string => (i18n[text] ? i18n[text][language] : text);
 
   const loginMutation = useMutation({
     mutationFn: ({ user, pass }: { user: string; pass: string }) => login(user, pass),
@@ -269,7 +357,7 @@ function App() {
       if (rememberMe) localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
       else localStorage.removeItem(STORAGE_KEY);
     },
-    onError: () => message.error("Login failed. Check credentials."),
+    onError: () => message.error(t("Login failed. Check credentials.")),
   });
 
   const dashboard = useQuery({
@@ -368,7 +456,7 @@ function App() {
       setShareholderShares("100");
       setManualInfluentialFlag(false);
       refreshAll();
-      message.success("Shareholder added.");
+      message.success(t("Shareholder added."));
     },
   });
   const updateShareholderMutation = useMutation({
@@ -391,14 +479,14 @@ function App() {
       setShowEditModal(false);
       setEditingShareholderId("");
       refreshAll();
-      message.success("Shareholder updated.");
+      message.success(t("Shareholder updated."));
     },
   });
   const deleteShareholderMutation = useMutation({
     mutationFn: (id: string) => deleteAuthorized(token!, `/shareholders/${id}`),
     onSuccess: () => {
       refreshAll();
-      message.success("Shareholder removed.");
+      message.success(t("Shareholder removed."));
     },
   });
   const bulkCreateShareholdersMutation = useMutation({
@@ -413,7 +501,7 @@ function App() {
     onSuccess: () => {
       setBulkRowsPreview([]);
       refreshAll();
-      message.success("Bulk shareholders imported.");
+      message.success(t("Bulk shareholders imported."));
     },
   });
   const createCandidateMutation = useMutation({
@@ -430,15 +518,15 @@ function App() {
       setCandidateShareholderId("");
       setCandidatePosition("Board Member");
       refreshAll();
-      message.success("Candidate registered.");
+      message.success(t("Candidate registered."));
     },
-    onError: () => message.error("Could not register candidate."),
+    onError: () => message.error(t("Could not register candidate.")),
   });
   const deleteCandidateMutation = useMutation({
     mutationFn: (id: string) => deleteAuthorized(token!, `/candidates/${id}`),
     onSuccess: () => {
       refreshAll();
-      message.success("Candidate removed.");
+      message.success(t("Candidate removed."));
     },
   });
   const castCandidateNominationVoteMutation = useMutation({
@@ -452,10 +540,10 @@ function App() {
       setNominationVoterShareholderId("");
       setNominationNomineeShareholderId("");
       refreshAll();
-      message.success("Nomination vote recorded.");
+      message.success(t("Nomination vote recorded."));
     },
     onError: () => {
-      message.error("Could not record nomination vote.");
+      message.error(t("Could not record nomination vote."));
     },
   });
   const promoteNomineeMutation = useMutation({
@@ -471,10 +559,10 @@ function App() {
       setPromoteNomineeShareholderId("");
       setPromoteCandidatePosition("Board Member");
       refreshAll();
-      message.success("Nominee promoted to official candidate.");
+      message.success(t("Nominee promoted to official candidate."));
     },
     onError: () => {
-      message.error("Could not promote nominee.");
+      message.error(t("Could not promote nominee."));
     },
   });
   const saveAdminConfigMutation = useMutation({
@@ -493,7 +581,7 @@ function App() {
     },
     onSuccess: () => {
       refreshAll();
-      message.success("Settings saved.");
+      message.success(t("Settings saved."));
     },
   });
   const resetSessionMutation = useMutation({
@@ -515,15 +603,15 @@ function App() {
       setResetClearCandidates(false);
       setResetClearAuditLogs(false);
       refreshAll();
-      message.success("AGM session data cleared.");
+      message.success(t("AGM session data cleared."));
     },
-    onError: () => message.error("Could not clear AGM session data."),
+    onError: () => message.error(t("Could not clear AGM session data.")),
   });
   const markAttendanceMutation = useMutation({
     mutationFn: () => postAuthorized(token!, "/attendance/mark", { shareholderId: selectedShareholder }),
     onSuccess: () => {
       refreshAll();
-      message.success("Attendance marked.");
+      message.success(t("Attendance marked."));
     },
   });
   const approveAttendanceMutation = useMutation({
@@ -560,6 +648,9 @@ function App() {
     localStorage.setItem(THEME_KEY, themeMode);
   }, [themeMode]);
   useEffect(() => {
+    localStorage.setItem(LANGUAGE_KEY, language);
+  }, [language]);
+  useEffect(() => {
     if (!token) return;
     const socket = io("http://localhost:4000");
     socket.on("dashboard:refresh", refreshAll);
@@ -569,19 +660,20 @@ function App() {
   }, [refreshAll, token]);
 
   const menuItems = [
-    { key: "dashboard", label: "Dashboard", icon: <IconLayoutDashboard size={16} />, visible: true },
-    { key: "shareholders", label: "Shareholders", icon: <IconUsers size={16} />, visible: isSuperAdmin },
-    { key: "candidates", label: "Candidates", icon: <IconUserStar size={16} />, visible: isSuperAdmin },
+    { key: "dashboard", label: t("Dashboard"), icon: <IconLayoutDashboard size={16} />, visible: true },
+    { key: "shareholders", label: t("Shareholders"), icon: <IconUsers size={16} />, visible: isSuperAdmin },
+    { key: "candidates", label: t("Candidates"), icon: <IconUserStar size={16} />, visible: isSuperAdmin },
     {
       key: "attendance",
-      label: "Attendance",
+      label: t("Attendance"),
       icon: <IconClockCheck size={16} />,
       visible: canMarkAttendance || canApproveAttendance || isSuperAdmin,
     },
-    { key: "votes", label: "Votes", icon: <IconCheckupList size={16} />, visible: canEncodeVote || canApproveVote || isSuperAdmin },
-    { key: "audit", label: "Audit Logs", icon: <IconReceipt2 size={16} />, visible: canViewAudit },
-    { key: "settings", label: "Settings", icon: <IconSettings size={16} />, visible: isSuperAdmin },
+    { key: "votes", label: t("Votes"), icon: <IconCheckupList size={16} />, visible: canEncodeVote || canApproveVote || isSuperAdmin },
+    { key: "audit", label: t("Audit Logs"), icon: <IconReceipt2 size={16} />, visible: canViewAudit },
+    { key: "settings", label: t("Settings"), icon: <IconSettings size={16} />, visible: isSuperAdmin },
   ].filter((item) => item.visible);
+  const activeSectionLabel = menuItems.find((item) => item.key === section)?.label ?? t("Dashboard");
 
   const parseBoolCell = (value: unknown): boolean | undefined => {
     if (typeof value === "boolean") return value;
@@ -613,14 +705,14 @@ function App() {
           }))
           .filter((row) => row.fullNameEn.length > 0 && Number.isFinite(row.shares) && row.shares > 0);
         if (!parsed.length) {
-          message.error("No valid rows found in uploaded file.");
+          message.error(t("No valid rows found in uploaded file."));
           setBulkRowsPreview([]);
         } else {
           setBulkRowsPreview(parsed);
           message.success(`Prepared ${parsed.length} rows for import.`);
         }
       } catch {
-        message.error("Failed to parse spreadsheet.");
+        message.error(t("Failed to parse spreadsheet."));
       }
       return false;
     },
@@ -708,18 +800,27 @@ function App() {
             <div className="vx-login-grid">
               <div className="vx-login-cover">
                 <Tag color="purple">SHMMF</Tag>
-                <Title level={2} style={{ marginTop: 18 }}>Welcome to SHMMF</Title>
-                <Text type="secondary">A polished AGM operations suite for compliant workflows and approvals.</Text>
+                <Title level={2} style={{ marginTop: 18 }}>{t("Welcome to SHMMF")}</Title>
+                <Text type="secondary">{t("A polished AGM operations suite for compliant workflows and approvals.")}</Text>
                 <div className="vx-cover-visual">
                   <div className="vx-orbit" />
                   <div className="vx-avatar-figure">SM</div>
-                  <div className="vx-float-card vx-float-left">Quorum +8.2%</div>
-                  <div className="vx-float-card vx-float-right">Votes 12.4k</div>
+                  <div className="vx-float-card vx-float-left">{t("Quorum +8.2%")}</div>
+                  <div className="vx-float-card vx-float-right">{t("Votes 12.4k")}</div>
                 </div>
               </div>
               <div className="vx-login-form-wrap">
                 <Space className="vx-login-form-head">
-                  <Title level={4} style={{ margin: 0 }}>Welcome back</Title>
+                  <Title level={4} style={{ margin: 0 }}>{t("Welcome back")}</Title>
+                  <Select
+                    value={language}
+                    style={{ width: 140 }}
+                    onChange={(value) => setLanguage(value as Language)}
+                    options={[
+                      { value: "en", label: "English" },
+                      { value: "am", label: "አማርኛ" },
+                    ]}
+                  />
                   <Switch
                     checkedChildren="Dark"
                     unCheckedChildren="Light"
@@ -728,17 +829,17 @@ function App() {
                   />
                 </Space>
                 <Form layout="vertical" onFinish={() => loginMutation.mutate({ user: username, pass: password })}>
-                  <Form.Item label="Username" required>
+                  <Form.Item label={t("Username")} required>
                     <Input value={username} onChange={(e) => setUsername(e.target.value)} />
                   </Form.Item>
-                  <Form.Item label="Password" required>
+                  <Form.Item label={t("Password")} required>
                     <Input.Password value={password} onChange={(e) => setPassword(e.target.value)} />
                   </Form.Item>
-                  <Form.Item label="Remember me">
+                  <Form.Item label={t("Remember me")}>
                     <Switch checked={rememberMe} onChange={setRememberMe} />
                   </Form.Item>
                   <Button type="primary" htmlType="submit" block loading={loginMutation.isPending}>
-                    Login
+                    {t("Login")}
                   </Button>
                 </Form>
               </div>
@@ -775,7 +876,17 @@ function App() {
           <Header className="vx-topbar">
             <div className="vx-header-left" />
             <Space className="vx-header-right" size={14}>
-              <Button className="vx-icon-btn" type="text" icon={<IconLanguage size={17} />} />
+              <Select
+                value={language}
+                size="small"
+                style={{ width: 130 }}
+                prefix={<IconLanguage size={14} />}
+                onChange={(value) => setLanguage(value as Language)}
+                options={[
+                  { value: "en", label: "English" },
+                  { value: "am", label: "አማርኛ" },
+                ]}
+              />
               <Switch
                 checked={themeMode === "dark"}
                 onChange={(checked) => setThemeMode(checked ? "dark" : "light")}
@@ -828,8 +939,8 @@ function App() {
           </Header>
           <Content className="vx-content">
             <div className="vx-page-title">
-              <Title level={4} style={{ margin: 0 }}>{section[0].toUpperCase()}{section.slice(1)}</Title>
-              <Tag color="green">Live Session</Tag>
+              <Title level={4} style={{ margin: 0 }}>{activeSectionLabel}</Title>
+              <Tag color="green">{t("Live Session")}</Tag>
             </div>
             {section === "dashboard" && (
               <Space direction="vertical" size="middle" style={{ width: "100%" }}>
@@ -850,7 +961,7 @@ function App() {
                   ))}
                 </div>
                 <div className="vx-dashboard-grid">
-                  <Card title="Quorum Progress" className="vx-card">
+                  <Card title={t("Quorum Progress")} className="vx-card">
                     <div className="vx-quorum-wrap">
                       <Progress
                         type="circle"
@@ -866,7 +977,7 @@ function App() {
                       </div>
                     </div>
                   </Card>
-                  <Card title="Votes by Candidate (Weighted by Shares)" className="vx-card">
+                  <Card title={t("Votes by Candidate (Weighted by Shares)")} className="vx-card">
                     <div className="vx-vote-chart">
                       {(dashboard.data?.voting.byCandidate ?? []).map((row: DashboardSnapshot["voting"]["byCandidate"][number]) => {
                         const maxShares = Math.max(
@@ -894,14 +1005,14 @@ function App() {
             )}
 
             {section === "shareholders" && (
-              <Card title="Shareholders" className="vx-card">
+              <Card title={t("Shareholders")} className="vx-card">
                 <Space wrap style={{ marginBottom: 16 }}>
-                  <Button type="primary" icon={<IconUserPlus size={16} />} onClick={() => setShowCreateModal(true)} disabled={!isSuperAdmin}>Add Shareholder</Button>
+                  <Button type="primary" icon={<IconUserPlus size={16} />} onClick={() => setShowCreateModal(true)} disabled={!isSuperAdmin}>{t("Add Shareholder")}</Button>
                   <Button icon={<IconDownload size={16} />} onClick={() => downloadFile(token, "/shareholders/template?format=xlsx", "shareholders-template.xlsx")} disabled={!isSuperAdmin}>
                     Download Template
                   </Button>
                   <Upload {...uploadProps}>
-                    <Button icon={<IconCloudUpload size={16} />} disabled={!isSuperAdmin}>Upload Template</Button>
+                    <Button icon={<IconCloudUpload size={16} />} disabled={!isSuperAdmin}>{t("Upload Template")}</Button>
                   </Upload>
                   <Button
                     type="primary"
@@ -969,7 +1080,7 @@ function App() {
             )}
 
             {section === "candidates" && (
-              <Card title="Candidates" className="vx-card">
+              <Card title={t("Candidates")} className="vx-card">
                 <Space wrap style={{ marginBottom: 16 }}>
                   <Button type="primary" icon={<IconUserStar size={16} />} onClick={() => setShowCandidateModal(true)} disabled={!isSuperAdmin}>
                     Register Candidate
@@ -1041,7 +1152,7 @@ function App() {
                   <Space direction="vertical" size={10} style={{ width: "100%" }}>
                     <Space>
                       <IconTrophy size={17} />
-                      <Text strong>Nomination Results Dashboard</Text>
+                      <Text strong>{t("Nomination Results Dashboard")}</Text>
                     </Space>
                     <Table
                       rowKey="nomineeShareholderId"
@@ -1057,7 +1168,7 @@ function App() {
                       <Space wrap>
                         <Select
                           style={{ minWidth: 300 }}
-                          placeholder="Promote nominee to candidate"
+                          placeholder={t("Promote to Candidate")}
                           showSearch
                           optionFilterProp="label"
                           value={promoteNomineeShareholderId || undefined}
@@ -1068,7 +1179,7 @@ function App() {
                         />
                         <Input
                           style={{ minWidth: 220 }}
-                          placeholder="Position"
+                          placeholder={t("Position")}
                           value={promoteCandidatePosition}
                           onChange={(e) => setPromoteCandidatePosition(e.target.value)}
                         />
@@ -1120,20 +1231,20 @@ function App() {
             )}
 
             {section === "attendance" && (
-              <Card title="Pending Attendance Approvals" className="vx-card">
+              <Card title={t("Pending Attendance Approvals")} className="vx-card">
                 <Space wrap style={{ marginBottom: 16 }}>
                   {isSuperAdmin && (
                     <>
-                      <Button icon={<IconFileTypeCsv size={16} />} onClick={() => downloadFile(token, "/reports/attendance?format=csv", "attendance-report.csv")}>Export CSV</Button>
-                      <Button icon={<IconFileSpreadsheet size={16} />} onClick={() => downloadFile(token, "/reports/attendance?format=xlsx", "attendance-report.xlsx")}>Export Excel</Button>
-                      <Button icon={<IconFileTypePdf size={16} />} onClick={() => downloadFile(token, "/reports/attendance?format=pdf", "attendance-report.pdf")}>Export PDF</Button>
+                      <Button icon={<IconFileTypeCsv size={16} />} onClick={() => downloadFile(token, "/reports/attendance?format=csv", "attendance-report.csv")}>{t("Export CSV")}</Button>
+                      <Button icon={<IconFileSpreadsheet size={16} />} onClick={() => downloadFile(token, "/reports/attendance?format=xlsx", "attendance-report.xlsx")}>{t("Export Excel")}</Button>
+                      <Button icon={<IconFileTypePdf size={16} />} onClick={() => downloadFile(token, "/reports/attendance?format=pdf", "attendance-report.pdf")}>{t("Export PDF")}</Button>
                     </>
                   )}
                 </Space>
                 <Space wrap style={{ marginBottom: 16 }}>
                   <Select
                     style={{ minWidth: 320 }}
-                    placeholder="Select shareholder"
+                    placeholder={t("Select shareholder")}
                     showSearch
                     optionFilterProp="label"
                     value={selectedShareholder || undefined}
@@ -1221,7 +1332,7 @@ function App() {
             )}
 
             {section === "votes" && (
-              <Card title="Pending Vote Approvals" className="vx-card">
+              <Card title={t("Pending Vote Approvals")} className="vx-card">
                 <Card size="small" className="vx-card vx-subcard">
                   <Space direction="vertical" size={2}>
                     <Text strong>Voting Eligibility Rule</Text>
@@ -1236,16 +1347,16 @@ function App() {
                 <Space wrap style={{ marginBottom: 16 }}>
                   {isSuperAdmin && (
                     <>
-                      <Button icon={<IconFileTypeCsv size={16} />} onClick={() => downloadFile(token, "/reports/votes?format=csv", "voting-report.csv")}>Export CSV</Button>
-                      <Button icon={<IconFileSpreadsheet size={16} />} onClick={() => downloadFile(token, "/reports/votes?format=xlsx", "voting-report.xlsx")}>Export Excel</Button>
-                      <Button icon={<IconFileTypePdf size={16} />} onClick={() => downloadFile(token, "/reports/votes?format=pdf", "voting-report.pdf")}>Export PDF</Button>
+                      <Button icon={<IconFileTypeCsv size={16} />} onClick={() => downloadFile(token, "/reports/votes?format=csv", "voting-report.csv")}>{t("Export CSV")}</Button>
+                      <Button icon={<IconFileSpreadsheet size={16} />} onClick={() => downloadFile(token, "/reports/votes?format=xlsx", "voting-report.xlsx")}>{t("Export Excel")}</Button>
+                      <Button icon={<IconFileTypePdf size={16} />} onClick={() => downloadFile(token, "/reports/votes?format=pdf", "voting-report.pdf")}>{t("Export PDF")}</Button>
                     </>
                   )}
                 </Space>
                 <Space wrap style={{ marginBottom: 16 }}>
                   <Select
                     style={{ minWidth: 320 }}
-                    placeholder="Select shareholder"
+                    placeholder={t("Select shareholder")}
                     showSearch
                     optionFilterProp="label"
                     value={selectedShareholder || undefined}
@@ -1254,7 +1365,7 @@ function App() {
                   />
                   <Select
                     style={{ minWidth: 320 }}
-                    placeholder="Select candidate"
+                    placeholder={t("Select candidate")}
                     showSearch
                     optionFilterProp="label"
                     value={selectedCandidate || undefined}
@@ -1342,7 +1453,7 @@ function App() {
             )}
 
             {section === "audit" && (
-              <Card title="Latest Audit Events" className="vx-card">
+              <Card title={t("Latest Audit Events")} className="vx-card">
                 <Table
                   rowKey="id"
                   dataSource={auditLogs.data ?? []}
@@ -1381,7 +1492,7 @@ function App() {
 
             {section === "settings" && (
               <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-                <Card title="Maker-Checker Controls" className="vx-card">
+              <Card title={t("Maker-Checker Controls")} className="vx-card">
                   <Descriptions column={1} size="small">
                     <Descriptions.Item label="Attendance Maker-Checker">
                       <Switch checked={resolvedAttendanceMakerCheckerEnabled} onChange={setAttendanceMakerCheckerEnabled} />
@@ -1408,7 +1519,7 @@ function App() {
                   </Descriptions>
                 </Card>
 
-                <Card title="AGM Session Maintenance" className="vx-card">
+                <Card title={t("AGM Session Maintenance")} className="vx-card">
                   <Space direction="vertical" size={8}>
                     <Text type="secondary">
                       Start a clean AGM session by clearing operational records (attendance, votes, and nomination votes).
@@ -1425,7 +1536,7 @@ function App() {
       </Layout>
 
       <Modal
-        title="Add Shareholder"
+        title={t("Add Shareholder")}
         open={showCreateModal}
         onCancel={() => setShowCreateModal(false)}
         onOk={() => createShareholderMutation.mutate()}
@@ -1445,7 +1556,7 @@ function App() {
       </Modal>
 
       <Modal
-        title="Edit Shareholder"
+        title={t("Edit")}
         open={showEditModal}
         onCancel={() => setShowEditModal(false)}
         onOk={() =>
@@ -1472,7 +1583,7 @@ function App() {
       </Modal>
 
       <Modal
-        title="Register Candidate"
+        title={t("Register Candidate")}
         open={showCandidateModal}
         onCancel={() => setShowCandidateModal(false)}
         onOk={() => createCandidateMutation.mutate()}
@@ -1481,7 +1592,7 @@ function App() {
         <Form layout="vertical">
           <Form.Item label="Candidate Shareholder">
             <Select
-              placeholder="Select shareholder"
+              placeholder={t("Select shareholder")}
               showSearch
               optionFilterProp="label"
               value={candidateShareholderId || undefined}
@@ -1496,12 +1607,12 @@ function App() {
       </Modal>
 
       <Modal
-        title="Reset AGM Session Data"
+        title={t("Reset AGM Session Data")}
         open={showResetSessionModal}
         onCancel={() => setShowResetSessionModal(false)}
         onOk={() => resetSessionMutation.mutate()}
         okButtonProps={{ danger: true, loading: resetSessionMutation.isPending }}
-        okText="Reset Session"
+        okText={t("Reset Session")}
       >
         <Space direction="vertical" size={10} style={{ width: "100%" }}>
           <Text type="secondary">
