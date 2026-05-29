@@ -988,9 +988,11 @@ function App() {
       influentialShareThreshold
     );
   });
-  const todayAgendaItems = (agendas.data ?? [])
-    .filter((agenda) => agenda.agenda_date === new Date().toISOString().slice(0, 10))
-    .sort((a, b) => a.sort_order - b.sort_order);
+  const allAgendaItems = [...(agendas.data ?? [])].sort((a, b) => {
+    if (a.agenda_date !== b.agenda_date) return a.agenda_date.localeCompare(b.agenda_date);
+    if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+    return a.created_at.localeCompare(b.created_at);
+  });
   const handleVoteVoterChange = (nextVoterId: string) => {
     setSelectedShareholder(nextVoterId);
     const selectedCandidateEntry = (candidates.data ?? []).find((candidate) => candidate.id === selectedCandidate);
@@ -1032,19 +1034,32 @@ function App() {
   const renderAgendaList = (expanded = false) => (
     <Space direction="vertical" size={8} style={{ width: "100%" }}>
       <Tag color="purple">Active: {dashboard.data?.agenda.activeTitle ?? "-"}</Tag>
-      <div className={expanded ? "vx-agenda-scroll" : undefined}>
-        {todayAgendaItems.map((agenda) => (
-          <div
-            key={agenda.id}
-            className={`vx-vote-row vx-agenda-item ${agenda.is_active === 1 ? "is-active" : ""}`}
-          >
-            <div className="vx-vote-label">
-              <strong>{agenda.title}</strong>
-              {agenda.is_active === 1 ? <Tag color="green">In Discussion</Tag> : <Tag>Pending</Tag>}
-            </div>
-            {agenda.details && <Text type="secondary">{agenda.details}</Text>}
-          </div>
-        ))}
+      <div className={expanded ? "vx-agenda-scroll" : "vx-agenda-list"}>
+        {allAgendaItems.length === 0 ? (
+          <Text type="secondary">No agendas scheduled.</Text>
+        ) : (
+          allAgendaItems.map((agenda) => {
+            const isActive = agenda.is_active === 1;
+            return (
+              <div
+                key={agenda.id}
+                className={`vx-vote-row vx-agenda-item ${isActive ? "is-active" : ""}`}
+                aria-current={isActive ? "true" : undefined}
+              >
+                <div className="vx-vote-label">
+                  <Space direction="vertical" size={0}>
+                    <strong>{agenda.title}</strong>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {agenda.agenda_date}
+                    </Text>
+                  </Space>
+                  {isActive ? <Tag color="green">Active</Tag> : <Tag>Pending</Tag>}
+                </div>
+                {agenda.details && <Text type="secondary">{agenda.details}</Text>}
+              </div>
+            );
+          })
+        )}
       </div>
     </Space>
   );
@@ -1291,7 +1306,7 @@ function App() {
                     </div>
                   </Card>
                   <Card
-                    title="Today's Agenda"
+                    title="Agendas"
                     className="vx-card vx-full-width-card"
                     extra={
                       <Button
@@ -2087,7 +2102,7 @@ function App() {
       </Modal>
 
       <Modal
-        title="Today's Agenda"
+        title="Agendas"
         open={showAgendaFullscreen}
         onCancel={() => setShowAgendaFullscreen(false)}
         footer={null}
