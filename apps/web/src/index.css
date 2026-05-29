@@ -285,6 +285,20 @@ body {
   height: 32px;
 }
 
+.vx-masked-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 160px;
+}
+
+.vx-masked-cell-toggle {
+  flex-shrink: 0;
+  color: #6f7388;
+}
+
 .vx-vote-chart {
   display: grid;
   gap: 12px;

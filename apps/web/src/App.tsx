@@ -36,6 +36,8 @@ import {
   IconDatabaseImport,
   IconDownload,
   IconEdit,
+  IconEye,
+  IconEyeOff,
   IconBell,
   IconArrowsMaximize,
   IconArrowsMinimize,
@@ -133,6 +135,33 @@ function formatNumber(value: number | string): string {
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) return String(value);
   return new Intl.NumberFormat().format(numeric);
+}
+
+function MaskedCandidateCell({
+  recordId,
+  candidateName,
+  revealedIds,
+  onToggle,
+}: {
+  recordId: string;
+  candidateName: string;
+  revealedIds: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  const revealed = revealedIds.has(recordId);
+  return (
+    <div className="vx-masked-cell">
+      <Text>{revealed ? candidateName : "**********"}</Text>
+      <Button
+        type="text"
+        size="small"
+        className="vx-masked-cell-toggle"
+        aria-label={revealed ? "Hide candidate" : "Show candidate"}
+        icon={revealed ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+        onClick={() => onToggle(recordId)}
+      />
+    </div>
+  );
 }
 
 function isInfluentialShareholder(
@@ -408,6 +437,7 @@ function App() {
   const [selectedCandidate, setSelectedCandidate] = useState("");
   const [selectedAttendance, setSelectedAttendance] = useState("");
   const [selectedVote, setSelectedVote] = useState("");
+  const [revealedApprovedVoteIds, setRevealedApprovedVoteIds] = useState<Set<string>>(() => new Set());
   const [nonInfluentialVotingOnly, setNonInfluentialVotingOnly] = useState(false);
   const [nonInfluentialNominationVotingOnly, setNonInfluentialNominationVotingOnly] = useState(false);
   const [candidateShareholderId, setCandidateShareholderId] = useState("");
@@ -978,6 +1008,61 @@ function App() {
     (shareholder) => !nominationVoterShareholderId || shareholder.id !== nominationVoterShareholderId
   );
   const shareholderById = new Map((shareholders.data ?? []).map((shareholder) => [shareholder.id, shareholder]));
+  const approvedAttendanceEntries = (attendanceAll.data ?? [])
+    .filter((row) => row.status === "APPROVED")
+    .map((row) => {
+      const shareholder = shareholderById.get(row.shareholder_id);
+      return {
+        id: row.id,
+        shareholderId: row.shareholder_id,
+        shareholderName: shareholder?.fullNameEn ?? row.shareholder_id,
+        shares: shareholder?.shares ?? 0,
+        timestamp: row.timestamp,
+      };
+    })
+    .sort((a, b) => a.shareholderName.localeCompare(b.shareholderName));
+  const attendanceReverseOptions = (attendanceAll.data ?? [])
+    .filter((row) => row.status === "APPROVED" || row.status === "PENDING")
+    .map((row) => {
+      const shareholder = shareholderById.get(row.shareholder_id);
+      const name = shareholder?.fullNameEn ?? row.shareholder_id;
+      return {
+        value: row.id,
+        label: `${name} — ${row.status}`,
+        shareholderName: name,
+      };
+    })
+    .sort((a, b) => a.shareholderName.localeCompare(b.shareholderName));
+  const candidateById = new Map((candidates.data ?? []).map((candidate) => [candidate.id, candidate]));
+  const approvedVoteEntries = (votesAll.data ?? [])
+    .filter((row) => row.status === "APPROVED")
+    .map((row) => {
+      const shareholder = shareholderById.get(row.shareholder_id);
+      const candidate = candidateById.get(row.candidate_id);
+      return {
+        id: row.id,
+        shareholderName: shareholder?.fullNameEn ?? row.shareholder_id,
+        candidateName: candidate ? `${candidate.name} (${candidate.position})` : row.candidate_id,
+        sharesUsed: row.shares_used,
+        timestamp: row.timestamp,
+      };
+    })
+    .sort((a, b) => a.shareholderName.localeCompare(b.shareholderName));
+  const voteReverseOptions = (votesAll.data ?? [])
+    .filter((row) => row.status === "APPROVED" || row.status === "PENDING")
+    .map((row) => {
+      const shareholder = shareholderById.get(row.shareholder_id);
+      const candidate = candidateById.get(row.candidate_id);
+      const shareholderName = shareholder?.fullNameEn ?? row.shareholder_id;
+      const candidateName = candidate?.name ?? row.candidate_id;
+      return {
+        value: row.id,
+        label: `${shareholderName} → ${candidateName} — ${row.status}`,
+        shareholderName,
+        candidateName,
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
   const nominationVoterOptions = (candidateNominationEligibleVoters.data ?? []).filter((voter) => {
     const shareholder = shareholderById.get(voter.id);
     if (!nonInfluentialNominationVotingOnly) return true;
@@ -1030,6 +1115,14 @@ function App() {
   };
   const openConfirmDialog = (options: Omit<ConfirmDialogState, "open">) => {
     setConfirmDialog({ open: true, ...options });
+  };
+  const toggleRevealedApprovedVote = (voteId: string) => {
+    setRevealedApprovedVoteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(voteId)) next.delete(voteId);
+      else next.add(voteId);
+      return next;
+    });
   };
   const renderAgendaList = (expanded = false) => (
     <Space direction="vertical" size={8} style={{ width: "100%" }}>
@@ -1649,7 +1742,7 @@ function App() {
             )}
 
             {section === "attendance" && (
-              <Card title={t("Pending Attendance Approvals")} className="vx-card">
+              <Card title={t("Attendance")} className="vx-card">
                 <Space wrap style={{ marginBottom: 16 }}>
                   {isSuperAdmin && (
                     <>
@@ -1678,77 +1771,127 @@ function App() {
                     Mark Attendance
                   </Button>
                 </div>
-                <Table
-                  rowKey="id"
-                  dataSource={attendancePending.data ?? []}
-                  columns={[
-                    { title: "ID", dataIndex: "id", render: (id: string) => id.slice(0, 8) },
-                    { title: "Shareholder", dataIndex: "shareholder_id" },
-                    { title: "Status", dataIndex: "status" },
-                    {
-                      title: "Actions",
-                      render: (_, row: AttendanceRow) => (
-                        <Space>
-                          <Button
-                            icon={<IconShieldCheck size={15} />}
-                            onClick={() =>
-                              openConfirmDialog({
-                                title: "Approve Attendance",
-                                description: `Approve attendance record ${row.id.slice(0, 8)}?`,
-                                confirmText: "Approve",
-                                onConfirm: () => approveAttendanceMutation.mutate({ id: row.id, approve: true }),
-                              })
-                            }
-                            disabled={!canApproveAttendance}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            danger
-                            onClick={() =>
-                              openConfirmDialog({
-                                title: "Reject Attendance",
-                                description: `Reject attendance record ${row.id.slice(0, 8)}?`,
-                                confirmText: "Reject",
-                                danger: true,
-                                onConfirm: () => approveAttendanceMutation.mutate({ id: row.id, approve: false }),
-                              })
-                            }
-                            disabled={!canApproveAttendance}
-                          >
-                            Reject
-                          </Button>
-                        </Space>
-                      ),
-                    },
-                  ]}
-                  pagination={{ pageSize: 7 }}
-                />
+                <Card size="small" title={t("Pending Attendance Approvals")} className="vx-card vx-subcard">
+                  <Table
+                    rowKey="id"
+                    dataSource={attendancePending.data ?? []}
+                    columns={[
+                      { title: "ID", dataIndex: "id", render: (id: string) => id.slice(0, 8) },
+                      { title: "Shareholder", dataIndex: "shareholder_id" },
+                      { title: "Status", dataIndex: "status" },
+                      {
+                        title: "Actions",
+                        render: (_, row: AttendanceRow) => (
+                          <Space>
+                            <Button
+                              icon={<IconShieldCheck size={15} />}
+                              onClick={() =>
+                                openConfirmDialog({
+                                  title: "Approve Attendance",
+                                  description: `Approve attendance record ${row.id.slice(0, 8)}?`,
+                                  confirmText: "Approve",
+                                  onConfirm: () => approveAttendanceMutation.mutate({ id: row.id, approve: true }),
+                                })
+                              }
+                              disabled={!canApproveAttendance}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              danger
+                              onClick={() =>
+                                openConfirmDialog({
+                                  title: "Reject Attendance",
+                                  description: `Reject attendance record ${row.id.slice(0, 8)}?`,
+                                  confirmText: "Reject",
+                                  danger: true,
+                                  onConfirm: () => approveAttendanceMutation.mutate({ id: row.id, approve: false }),
+                                })
+                              }
+                              disabled={!canApproveAttendance}
+                            >
+                              Reject
+                            </Button>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                    pagination={{ pageSize: 7 }}
+                  />
+                </Card>
+                <Card size="small" title="Attended Shareholders (Approved)" className="vx-card vx-subcard" style={{ marginTop: 16 }}>
+                  <div className="vx-quorum-wrap" style={{ marginBottom: 16 }}>
+                    <Progress
+                      type="circle"
+                      percent={Number(dashboard.data?.attendance.quorumPercentage ?? 0)}
+                      strokeColor={activeBrandTheme.primary}
+                      trailColor="rgba(115, 103, 240, 0.14)"
+                      size={72}
+                    />
+                    <div>
+                      <h3 style={{ margin: "0 0 6px" }}>
+                        {formatNumber(dashboard.data?.attendance.attendedShareholders ?? approvedAttendanceEntries.length)}{" "}
+                        attended
+                      </h3>
+                      <Text type="secondary">
+                        Out of {formatNumber(dashboard.data?.shareholders.total ?? shareholders.data?.length ?? 0)} total
+                        shareholders ({formatNumber(dashboard.data?.attendance.quorumPercentage ?? 0)}% quorum).
+                      </Text>
+                    </div>
+                  </div>
+                  <Table
+                    rowKey="id"
+                    dataSource={approvedAttendanceEntries}
+                    columns={[
+                      { title: "Shareholder", dataIndex: "shareholderName" },
+                      { title: "Shares", dataIndex: "shares", render: (value: number) => formatNumber(value) },
+                      {
+                        title: "Marked At",
+                        dataIndex: "timestamp",
+                        render: (value: string) => new Date(value).toLocaleString(),
+                      },
+                      {
+                        title: "Status",
+                        render: () => <Tag color="green">APPROVED</Tag>,
+                      },
+                    ]}
+                    pagination={{ pageSize: 10 }}
+                    locale={{ emptyText: "No approved attendance records yet." }}
+                  />
+                </Card>
                 <div className="vx-inline-controls" style={{ marginTop: 16 }}>
                   <Select
                     className="vx-inline-controls-field"
-                    placeholder="Select attendance to reverse"
+                    placeholder="Select shareholder to reverse"
                     showSearch
                     optionFilterProp="label"
+                    filterOption={(input, option) =>
+                      String(option?.label ?? "")
+                        .toLowerCase()
+                        .includes(input.trim().toLowerCase())
+                    }
                     value={selectedAttendance || undefined}
                     onChange={setSelectedAttendance}
-                    options={(attendanceAll.data ?? []).map((a) => ({
-                      value: a.id,
-                      label: `${a.id.slice(0, 8)} - ${a.status}`,
+                    options={attendanceReverseOptions.map((option) => ({
+                      value: option.value,
+                      label: option.label,
                     }))}
                   />
                   <Button
                     danger
                     icon={<IconTrash size={15} />}
-                    onClick={() =>
+                    onClick={() => {
+                      const selected = attendanceReverseOptions.find((option) => option.value === selectedAttendance);
                       openConfirmDialog({
                         title: "Reverse Attendance",
-                        description: "Reverse this attendance record and mark it rejected?",
+                        description: selected
+                          ? `Reverse attendance for ${selected.shareholderName} and mark it rejected?`
+                          : "Reverse this attendance record and mark it rejected?",
                         confirmText: "Reverse",
                         danger: true,
                         onConfirm: () => reverseAttendanceMutation.mutate(),
-                      })
-                    }
+                      });
+                    }}
                     disabled={!selectedAttendance || !isSuperAdmin}
                   >
                     Reverse Attendance
@@ -1758,7 +1901,7 @@ function App() {
             )}
 
             {section === "votes" && (
-              <Card title={t("Pending Vote Approvals")} className="vx-card">
+              <Card title={t("Votes")} className="vx-card">
                 <Card size="small" className="vx-card vx-subcard">
                   <Space direction="vertical" size={2}>
                     <Text strong>Voting Eligibility Rule</Text>
@@ -1820,79 +1963,155 @@ function App() {
                     Encode Vote
                   </Button>
                 </div>
-                <Table
-                  rowKey="id"
-                  dataSource={votesPending.data ?? []}
-                  columns={[
-                    { title: "ID", dataIndex: "id", render: (id: string) => id.slice(0, 8) },
-                    { title: "Shareholder", dataIndex: "shareholder_id" },
-                    { title: "Candidate", dataIndex: "candidate_id" },
-                    {
-                      title: "Actions",
-                      render: (_, row: VoteRow) => (
-                        <Space>
-                          <Button
-                            icon={<IconShieldCheck size={15} />}
-                            onClick={() =>
-                              openConfirmDialog({
-                                title: "Approve Vote",
-                                description: `Approve vote record ${row.id.slice(0, 8)}?`,
-                                confirmText: "Approve",
-                                onConfirm: () => approveVoteMutation.mutate({ id: row.id, approve: true }),
-                              })
-                            }
-                            disabled={!canApproveVote}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            danger
-                            onClick={() =>
-                              openConfirmDialog({
-                                title: "Reject Vote",
-                                description: `Reject vote record ${row.id.slice(0, 8)}?`,
-                                confirmText: "Reject",
-                                danger: true,
-                                onConfirm: () => approveVoteMutation.mutate({ id: row.id, approve: false }),
-                              })
-                            }
-                            disabled={!canApproveVote}
-                          >
-                            Reject
-                          </Button>
-                        </Space>
-                      ),
-                    },
-                  ]}
-                  pagination={{ pageSize: 7 }}
-                />
-                <Space style={{ marginTop: 16 }}>
+                <Card size="small" title={t("Pending Vote Approvals")} className="vx-card vx-subcard">
+                  <Table
+                    rowKey="id"
+                    dataSource={votesPending.data ?? []}
+                    columns={[
+                      { title: "ID", dataIndex: "id", render: (id: string) => id.slice(0, 8) },
+                      {
+                        title: "Shareholder",
+                        dataIndex: "shareholder_id",
+                        render: (id: string) => shareholderById.get(id)?.fullNameEn ?? id,
+                      },
+                      {
+                        title: "Candidate",
+                        dataIndex: "candidate_id",
+                        render: (id: string) => {
+                          const candidate = candidateById.get(id);
+                          return candidate ? `${candidate.name} (${candidate.position})` : id;
+                        },
+                      },
+                      { title: "Shares", dataIndex: "shares_used", render: (value: number) => formatNumber(value) },
+                      {
+                        title: "Actions",
+                        render: (_, row: VoteRow) => (
+                          <Space>
+                            <Button
+                              icon={<IconShieldCheck size={15} />}
+                              onClick={() => {
+                                const voter = shareholderById.get(row.shareholder_id)?.fullNameEn ?? row.shareholder_id;
+                                const candidate = candidateById.get(row.candidate_id)?.name ?? row.candidate_id;
+                                openConfirmDialog({
+                                  title: "Approve Vote",
+                                  description: `Approve vote from ${voter} for ${candidate}?`,
+                                  confirmText: "Approve",
+                                  onConfirm: () => approveVoteMutation.mutate({ id: row.id, approve: true }),
+                                });
+                              }}
+                              disabled={!canApproveVote}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              danger
+                              onClick={() => {
+                                const voter = shareholderById.get(row.shareholder_id)?.fullNameEn ?? row.shareholder_id;
+                                const candidate = candidateById.get(row.candidate_id)?.name ?? row.candidate_id;
+                                openConfirmDialog({
+                                  title: "Reject Vote",
+                                  description: `Reject vote from ${voter} for ${candidate}?`,
+                                  confirmText: "Reject",
+                                  danger: true,
+                                  onConfirm: () => approveVoteMutation.mutate({ id: row.id, approve: false }),
+                                });
+                              }}
+                              disabled={!canApproveVote}
+                            >
+                              Reject
+                            </Button>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                    pagination={{ pageSize: 7 }}
+                  />
+                </Card>
+                <Card size="small" title="Approved Votes" className="vx-card vx-subcard" style={{ marginTop: 16 }}>
+                  <Space direction="vertical" size={4} style={{ marginBottom: 16 }}>
+                    <Text strong>
+                      {formatNumber(dashboard.data?.voting.totalVotes ?? approvedVoteEntries.length)} approved vote
+                      {(dashboard.data?.voting.totalVotes ?? approvedVoteEntries.length) === 1 ? "" : "s"}
+                    </Text>
+                    <Text type="secondary">
+                      {formatNumber(dashboard.data?.voting.pendingApprovals ?? votesPending.data?.length ?? 0)} pending
+                      approval
+                      {(dashboard.data?.voting.pendingApprovals ?? votesPending.data?.length ?? 0) === 1
+                        ? ""
+                        : "s"}
+                      .
+                    </Text>
+                  </Space>
+                  <Table
+                    rowKey="id"
+                    dataSource={approvedVoteEntries}
+                    columns={[
+                      { title: "Shareholder", dataIndex: "shareholderName" },
+                      {
+                        title: "Candidate",
+                        dataIndex: "candidateName",
+                        render: (candidateName: string, row: (typeof approvedVoteEntries)[number]) => (
+                          <MaskedCandidateCell
+                            recordId={row.id}
+                            candidateName={candidateName}
+                            revealedIds={revealedApprovedVoteIds}
+                            onToggle={toggleRevealedApprovedVote}
+                          />
+                        ),
+                      },
+                      { title: "Shares", dataIndex: "sharesUsed", render: (value: number) => formatNumber(value) },
+                      {
+                        title: "Cast At",
+                        dataIndex: "timestamp",
+                        render: (value: string) => new Date(value).toLocaleString(),
+                      },
+                      {
+                        title: "Status",
+                        render: () => <Tag color="green">APPROVED</Tag>,
+                      },
+                    ]}
+                    pagination={{ pageSize: 10 }}
+                    locale={{ emptyText: "No approved votes yet." }}
+                  />
+                </Card>
+                <div className="vx-inline-controls" style={{ marginTop: 16 }}>
                   <Select
-                    style={{ minWidth: 320 }}
+                    className="vx-inline-controls-field"
                     placeholder="Select vote to reverse"
                     showSearch
                     optionFilterProp="label"
+                    filterOption={(input, option) =>
+                      String(option?.label ?? "")
+                        .toLowerCase()
+                        .includes(input.trim().toLowerCase())
+                    }
                     value={selectedVote || undefined}
                     onChange={setSelectedVote}
-                    options={(votesAll.data ?? []).map((v) => ({ value: v.id, label: `${v.id.slice(0, 8)} - ${v.status}` }))}
+                    options={voteReverseOptions.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                    }))}
                   />
                   <Button
                     danger
                     icon={<IconTrash size={15} />}
-                    onClick={() =>
+                    onClick={() => {
+                      const selected = voteReverseOptions.find((option) => option.value === selectedVote);
                       openConfirmDialog({
                         title: "Reverse Vote",
-                        description: "Reverse this vote record and mark it rejected?",
+                        description: selected
+                          ? `Reverse vote from ${selected.shareholderName} for ${selected.candidateName} and mark it rejected?`
+                          : "Reverse this vote record and mark it rejected?",
                         confirmText: "Reverse",
                         danger: true,
                         onConfirm: () => reverseVoteMutation.mutate(),
-                      })
-                    }
+                      });
+                    }}
                     disabled={!selectedVote || !isSuperAdmin}
                   >
                     Reverse Vote
                   </Button>
-                </Space>
+                </div>
               </Card>
             )}
 
