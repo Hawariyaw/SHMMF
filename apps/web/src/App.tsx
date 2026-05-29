@@ -54,7 +54,6 @@ import {
   IconSun,
   IconTrophy,
   IconTrash,
-  IconUsersGroup,
   IconUserPlus,
   IconUserStar,
   IconUsers,
@@ -101,6 +100,32 @@ function BrandThemeOption({ label, color }: { label: string; color: string }) {
       />
       <span>{label}</span>
     </Space>
+  );
+}
+
+function ShmmfMark({ size = 24, color = "#7367f0" }: { size?: number; color?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 32 32"
+      width={size}
+      height={size}
+      aria-hidden
+      style={{ display: "block", flexShrink: 0 }}
+    >
+      <rect width="32" height="32" rx="7" fill={color} />
+      <text
+        x="16"
+        y="22.5"
+        fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        fontSize="19"
+        fontWeight="700"
+        fill="#ffffff"
+        textAnchor="middle"
+      >
+        S
+      </text>
+    </svg>
   );
 }
 
@@ -1043,7 +1068,7 @@ function App() {
         <Sider width={264} className="vx-sider">
           <div className="vx-brand">
             <Space size={8} align="center">
-              <IconUsersGroup size={24} color="#ffffff" />
+              <ShmmfMark size={24} color={activeBrandTheme.primary} />
               <Title level={5} style={{ color: "#fff", margin: 0, lineHeight: 1 }}>SHMMF Console</Title>
             </Space>
           </div>
