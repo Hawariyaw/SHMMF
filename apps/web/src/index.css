@@ -252,6 +252,39 @@ body {
   gap: 18px;
 }
 
+.vx-inline-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.vx-inline-controls-toggle {
+  flex: 0 0 auto;
+}
+
+.vx-inline-controls-field {
+  flex: 1 1 240px;
+  min-width: 240px;
+  max-width: 320px;
+  margin: 0;
+}
+
+.vx-inline-controls .ant-select {
+  display: inline-flex;
+  align-items: center;
+}
+
+.vx-inline-controls .ant-select-selector {
+  height: 32px !important;
+}
+
+.vx-inline-controls .ant-btn {
+  flex: 0 0 auto;
+  height: 32px;
+}
+
 .vx-vote-chart {
   display: grid;
   gap: 12px;

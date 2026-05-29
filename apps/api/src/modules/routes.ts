@@ -776,6 +776,19 @@ export function registerRoutes(app: Express): void {
         res.status(400).json({ message: "Invalid payload" });
         return;
       }
+      const existingAttendance = db
+        .prepare(
+          "SELECT id, status FROM attendance_records WHERE shareholder_id = ? AND status IN ('APPROVED', 'PENDING') LIMIT 1"
+        )
+        .get(parsed.data.shareholderId) as { id: string; status: string } | undefined;
+      if (existingAttendance?.status === "APPROVED") {
+        res.status(409).json({ message: "This shareholder already has approved attendance" });
+        return;
+      }
+      if (existingAttendance?.status === "PENDING") {
+        res.status(409).json({ message: "This shareholder already has a pending attendance record" });
+        return;
+      }
       const makerChecker = configEnabled("attendanceMakerCheckerEnabled");
       const status = makerChecker ? "PENDING" : "APPROVED";
       const id = randomUUID();

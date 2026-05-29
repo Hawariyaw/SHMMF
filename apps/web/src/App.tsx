@@ -789,6 +789,7 @@ function App() {
   const markAttendanceMutation = useMutation({
     mutationFn: () => postAuthorized(token!, "/attendance/mark", { shareholderId: selectedShareholder }),
     onSuccess: () => {
+      setSelectedShareholder("");
       refreshAll();
       message.success(t("Attendance marked."));
     },
@@ -948,6 +949,14 @@ function App() {
     (attendanceAll.data ?? [])
       .filter((row) => row.status === "APPROVED")
       .map((row) => row.shareholder_id)
+  );
+  const shareholdersWithActiveAttendance = new Set(
+    (attendanceAll.data ?? [])
+      .filter((row) => row.status === "APPROVED" || row.status === "PENDING")
+      .map((row) => row.shareholder_id)
+  );
+  const attendanceMarkShareholderOptions = (shareholders.data ?? []).filter(
+    (shareholder) => !shareholdersWithActiveAttendance.has(shareholder.id)
   );
   const votedShareholderIds = new Set((votesAll.data ?? []).map((vote) => vote.shareholder_id));
   const influentialShareThreshold = Number(resolvedInfluentialThreshold) || 100000;
@@ -1408,30 +1417,28 @@ function App() {
                         Non-influential mode is on: only the voter (shares) list hides influential shareholders. Nominees are unchanged.
                       </Text>
                     )}
-                    <Space wrap align="start">
-                      <Space direction="vertical" size={8}>
-                        <Space align="center">
-                          <Switch
-                            checked={nonInfluentialNominationVotingOnly}
-                            onChange={handleNonInfluentialNominationToggle}
-                          />
-                          <Text>{t("Non-Influential Share Only")}</Text>
-                        </Space>
-                        <Select
-                          style={{ minWidth: 280 }}
-                          placeholder={t("Select shares")}
-                          showSearch
-                          optionFilterProp="label"
-                          value={nominationVoterShareholderId || undefined}
-                          onChange={handleNominationVoterChange}
-                          options={nominationVoterOptions.map((s) => ({
-                            value: s.id,
-                            label: `${s.fullNameEn} (${formatNumber(s.shares)} shares)`,
-                          }))}
+                    <div className="vx-inline-controls">
+                      <Space align="center" size={8} className="vx-inline-controls-toggle">
+                        <Switch
+                          checked={nonInfluentialNominationVotingOnly}
+                          onChange={handleNonInfluentialNominationToggle}
                         />
+                        <Text style={{ whiteSpace: "nowrap" }}>{t("Non-Influential Share Only")}</Text>
                       </Space>
                       <Select
-                        style={{ minWidth: 280 }}
+                        className="vx-inline-controls-field"
+                        placeholder={t("Select voter")}
+                        showSearch
+                        optionFilterProp="label"
+                        value={nominationVoterShareholderId || undefined}
+                        onChange={handleNominationVoterChange}
+                        options={nominationVoterOptions.map((s) => ({
+                          value: s.id,
+                          label: `${s.fullNameEn} (${formatNumber(s.shares)} shares)`,
+                        }))}
+                      />
+                      <Select
+                        className="vx-inline-controls-field"
                         placeholder="Select nominee shareholder"
                         showSearch
                         optionFilterProp="label"
@@ -1451,7 +1458,7 @@ function App() {
                       >
                         Cast Nomination Vote
                       </Button>
-                    </Space>
+                    </div>
                     <Text type="secondary">
                       Eligible nomination voters remaining: {formatNumber(nominationVoterOptions.length)} /{" "}
                       {formatNumber(candidateNominationEligibleVoters.data?.length ?? 0)}
@@ -1637,20 +1644,25 @@ function App() {
                     </>
                   )}
                 </Space>
-                <Space wrap style={{ marginBottom: 16 }}>
+                <div className="vx-inline-controls" style={{ marginBottom: 16 }}>
                   <Select
-                    style={{ minWidth: 320 }}
+                    className="vx-inline-controls-field"
                     placeholder={t("Select shareholder")}
                     showSearch
                     optionFilterProp="label"
                     value={selectedShareholder || undefined}
                     onChange={setSelectedShareholder}
-                    options={(shareholders.data ?? []).map((s) => ({ value: s.id, label: s.fullNameEn }))}
+                    options={attendanceMarkShareholderOptions.map((s) => ({ value: s.id, label: s.fullNameEn }))}
                   />
-                  <Button type="primary" icon={<IconCheckupList size={16} />} onClick={() => markAttendanceMutation.mutate()} disabled={!selectedShareholder || !canMarkAttendance}>
+                  <Button
+                    type="primary"
+                    icon={<IconCheckupList size={16} />}
+                    onClick={() => markAttendanceMutation.mutate()}
+                    disabled={!selectedShareholder || !canMarkAttendance}
+                  >
                     Mark Attendance
                   </Button>
-                </Space>
+                </div>
                 <Table
                   rowKey="id"
                   dataSource={attendancePending.data ?? []}
@@ -1697,15 +1709,18 @@ function App() {
                   ]}
                   pagination={{ pageSize: 7 }}
                 />
-                <Space style={{ marginTop: 16 }}>
+                <div className="vx-inline-controls" style={{ marginTop: 16 }}>
                   <Select
-                    style={{ minWidth: 320 }}
+                    className="vx-inline-controls-field"
                     placeholder="Select attendance to reverse"
                     showSearch
                     optionFilterProp="label"
                     value={selectedAttendance || undefined}
                     onChange={setSelectedAttendance}
-                    options={(attendanceAll.data ?? []).map((a) => ({ value: a.id, label: `${a.id.slice(0, 8)} - ${a.status}` }))}
+                    options={(attendanceAll.data ?? []).map((a) => ({
+                      value: a.id,
+                      label: `${a.id.slice(0, 8)} - ${a.status}`,
+                    }))}
                   />
                   <Button
                     danger
@@ -1723,7 +1738,7 @@ function App() {
                   >
                     Reverse Attendance
                   </Button>
-                </Space>
+                </div>
               </Card>
             )}
 
@@ -1755,24 +1770,22 @@ function App() {
                     </>
                   )}
                 </Space>
-                <Space wrap style={{ marginBottom: 16 }} align="start">
-                  <Space direction="vertical" size={8}>
-                    <Space align="center">
-                      <Switch checked={nonInfluentialVotingOnly} onChange={handleNonInfluentialVotingToggle} />
-                      <Text>{t("Non-Influential Share Only")}</Text>
-                    </Space>
-                    <Select
-                      style={{ minWidth: 320 }}
-                      placeholder={t("Select shares")}
-                      showSearch
-                      optionFilterProp="label"
-                      value={selectedShareholder || undefined}
-                      onChange={handleVoteVoterChange}
-                      options={votingShareholderOptions.map((s) => ({ value: s.id, label: s.fullNameEn }))}
-                    />
+                <div className="vx-inline-controls" style={{ marginBottom: 16 }}>
+                  <Space align="center" size={8} className="vx-inline-controls-toggle">
+                    <Switch checked={nonInfluentialVotingOnly} onChange={handleNonInfluentialVotingToggle} />
+                    <Text style={{ whiteSpace: "nowrap" }}>{t("Non-Influential Share Only")}</Text>
                   </Space>
                   <Select
-                    style={{ minWidth: 320 }}
+                    className="vx-inline-controls-field"
+                    placeholder={t("Select shares")}
+                    showSearch
+                    optionFilterProp="label"
+                    value={selectedShareholder || undefined}
+                    onChange={handleVoteVoterChange}
+                    options={votingShareholderOptions.map((s) => ({ value: s.id, label: s.fullNameEn }))}
+                  />
+                  <Select
+                    className="vx-inline-controls-field"
                     placeholder={t("Select candidate")}
                     showSearch
                     optionFilterProp="label"
@@ -1783,10 +1796,15 @@ function App() {
                       label: `${candidate.name} (${candidate.position})`,
                     }))}
                   />
-                  <Button type="primary" icon={<IconDatabaseImport size={16} />} onClick={() => encodeVoteMutation.mutate()} disabled={!selectedShareholder || !selectedCandidate || !canEncodeVote}>
+                  <Button
+                    type="primary"
+                    icon={<IconDatabaseImport size={16} />}
+                    onClick={() => encodeVoteMutation.mutate()}
+                    disabled={!selectedShareholder || !selectedCandidate || !canEncodeVote}
+                  >
                     Encode Vote
                   </Button>
-                </Space>
+                </div>
                 <Table
                   rowKey="id"
                   dataSource={votesPending.data ?? []}
