@@ -135,6 +135,17 @@ function formatNumber(value: number | string): string {
   return new Intl.NumberFormat().format(numeric);
 }
 
+function isInfluentialShareholder(
+  shareholder: ShareholderRow,
+  autoClassificationEnabled: boolean,
+  influentialShareThreshold: number
+): boolean {
+  if (autoClassificationEnabled) {
+    return shareholder.shares >= influentialShareThreshold;
+  }
+  return shareholder.isHighPower;
+}
+
 const i18n: Record<string, { en: string; am: string }> = {
   Dashboard: { en: "Dashboard", am: "ዳሽቦርድ" },
   Shareholders: { en: "Shareholders", am: "ባለአክሲዮኖች" },
@@ -180,7 +191,9 @@ const i18n: Record<string, { en: string; am: string }> = {
   "Pending Attendance Approvals": { en: "Pending Attendance Approvals", am: "በመጠባበቅ ላይ ያሉ የመገኘት ፍቃዶች" },
   "Pending Vote Approvals": { en: "Pending Vote Approvals", am: "በመጠባበቅ ላይ ያሉ የድምጽ ፍቃዶች" },
   "Select shareholder": { en: "Select shareholder", am: "ባለአክሲዮን ይምረጡ" },
+  "Select shares": { en: "Select shares", am: "አክሲዮን ይምረጡ" },
   "Select candidate": { en: "Select candidate", am: "እጩ ይምረጡ" },
+  "Non-Influential Share Only": { en: "Non-Influential Share Only", am: "ያልጎልቱ አክሲዮን ብቻ" },
   "Cast Nomination Vote": { en: "Cast Nomination Vote", am: "የእጩ ድምጽ ይስጡ" },
   "Nomination Results Dashboard": { en: "Nomination Results Dashboard", am: "የእጩ ውጤት ዳሽቦርድ" },
   "Promote to Candidate": { en: "Promote to Candidate", am: "ወደ እጩ አሻሽል" },
@@ -395,6 +408,8 @@ function App() {
   const [selectedCandidate, setSelectedCandidate] = useState("");
   const [selectedAttendance, setSelectedAttendance] = useState("");
   const [selectedVote, setSelectedVote] = useState("");
+  const [nonInfluentialVotingOnly, setNonInfluentialVotingOnly] = useState(false);
+  const [nonInfluentialNominationVotingOnly, setNonInfluentialNominationVotingOnly] = useState(false);
   const [candidateShareholderId, setCandidateShareholderId] = useState("");
   const [candidatePosition, setCandidatePosition] = useState("Board Member");
   const [nominationVoterShareholderId, setNominationVoterShareholderId] = useState("");
@@ -506,7 +521,7 @@ function App() {
   const config = useQuery({
     queryKey: ["config", token],
     queryFn: () => fetchConfig(token!),
-    enabled: Boolean(token && isSuperAdmin),
+    enabled: Boolean(token && (isSuperAdmin || canEncodeVote || canApproveVote)),
   });
 
   const resolvedAutoClassificationEnabled = autoClassificationEnabled ?? config.data?.influentialAutoClassificationEnabled ?? false;
@@ -627,6 +642,7 @@ function App() {
       await postAuthorized(token!, "/candidate-nominations/vote", {
         voterShareholderId: nominationVoterShareholderId,
         nomineeShareholderId: nominationNomineeShareholderId,
+        nonInfluentialOnly: nonInfluentialNominationVotingOnly,
       });
     },
     onSuccess: () => {
@@ -791,7 +807,11 @@ function App() {
   });
   const encodeVoteMutation = useMutation({
     mutationFn: () =>
-      postAuthorized(token!, "/votes/encode", { shareholderId: selectedShareholder, candidateId: selectedCandidate }),
+      postAuthorized(token!, "/votes/encode", {
+        shareholderId: selectedShareholder,
+        candidateId: selectedCandidate,
+        nonInfluentialOnly: nonInfluentialVotingOnly,
+      }),
     onSuccess: refreshAll,
   });
   const approveVoteMutation = useMutation({
@@ -930,15 +950,35 @@ function App() {
       .map((row) => row.shareholder_id)
   );
   const votedShareholderIds = new Set((votesAll.data ?? []).map((vote) => vote.shareholder_id));
-  const eligibleVoters = (shareholders.data ?? []).filter(
+  const influentialShareThreshold = Number(resolvedInfluentialThreshold) || 100000;
+  const attendedVotingShareholders = (shareholders.data ?? []).filter(
     (shareholder) => attendedShareholderIds.has(shareholder.id) && !votedShareholderIds.has(shareholder.id)
   );
-  const selectableCandidates = (candidates.data ?? []).filter(
+  const votingShareholderOptions = attendedVotingShareholders.filter((shareholder) => {
+    if (!nonInfluentialVotingOnly) return true;
+    return !isInfluentialShareholder(
+      shareholder,
+      resolvedAutoClassificationEnabled,
+      influentialShareThreshold
+    );
+  });
+  const votingCandidateOptions = (candidates.data ?? []).filter(
     (candidate) => !selectedShareholder || candidate.shareholder_id !== selectedShareholder
   );
   const selectableNomineeShareholders = (shareholders.data ?? []).filter(
     (shareholder) => !nominationVoterShareholderId || shareholder.id !== nominationVoterShareholderId
   );
+  const shareholderById = new Map((shareholders.data ?? []).map((shareholder) => [shareholder.id, shareholder]));
+  const nominationVoterOptions = (candidateNominationEligibleVoters.data ?? []).filter((voter) => {
+    const shareholder = shareholderById.get(voter.id);
+    if (!nonInfluentialNominationVotingOnly) return true;
+    if (!shareholder) return true;
+    return !isInfluentialShareholder(
+      shareholder,
+      resolvedAutoClassificationEnabled,
+      influentialShareThreshold
+    );
+  });
   const todayAgendaItems = (agendas.data ?? [])
     .filter((agenda) => agenda.agenda_date === new Date().toISOString().slice(0, 10))
     .sort((a, b) => a.sort_order - b.sort_order);
@@ -949,10 +989,32 @@ function App() {
       setSelectedCandidate("");
     }
   };
+  const handleNonInfluentialVotingToggle = (enabled: boolean) => {
+    setNonInfluentialVotingOnly(enabled);
+    if (!enabled || !selectedShareholder) return;
+    const selected = (shareholders.data ?? []).find((shareholder) => shareholder.id === selectedShareholder);
+    if (
+      selected &&
+      isInfluentialShareholder(selected, resolvedAutoClassificationEnabled, influentialShareThreshold)
+    ) {
+      setSelectedShareholder("");
+    }
+  };
   const handleNominationVoterChange = (nextVoterId: string) => {
     setNominationVoterShareholderId(nextVoterId);
     if (nominationNomineeShareholderId === nextVoterId) {
       setNominationNomineeShareholderId("");
+    }
+  };
+  const handleNonInfluentialNominationToggle = (enabled: boolean) => {
+    setNonInfluentialNominationVotingOnly(enabled);
+    if (!enabled || !nominationVoterShareholderId) return;
+    const selected = shareholderById.get(nominationVoterShareholderId);
+    if (
+      selected &&
+      isInfluentialShareholder(selected, resolvedAutoClassificationEnabled, influentialShareThreshold)
+    ) {
+      setNominationVoterShareholderId("");
     }
   };
   const openConfirmDialog = (options: Omit<ConfirmDialogState, "open">) => {
@@ -1341,19 +1403,33 @@ function App() {
                     <Text type="secondary">
                       Shareholders can vote for nominee shareholders. Vote weight uses the voter's shares, and top nominees can be promoted to the official candidate list.
                     </Text>
-                    <Space wrap>
-                      <Select
-                        style={{ minWidth: 280 }}
-                        placeholder="Select voter shareholder"
-                        showSearch
-                        optionFilterProp="label"
-                        value={nominationVoterShareholderId || undefined}
-                        onChange={handleNominationVoterChange}
-                        options={(candidateNominationEligibleVoters.data ?? []).map((s) => ({
-                          value: s.id,
-                          label: `${s.fullNameEn} (${formatNumber(s.shares)} shares)`,
-                        }))}
-                      />
+                    {nonInfluentialNominationVotingOnly && (
+                      <Text type="secondary">
+                        Non-influential mode is on: only the voter (shares) list hides influential shareholders. Nominees are unchanged.
+                      </Text>
+                    )}
+                    <Space wrap align="start">
+                      <Space direction="vertical" size={8}>
+                        <Space align="center">
+                          <Switch
+                            checked={nonInfluentialNominationVotingOnly}
+                            onChange={handleNonInfluentialNominationToggle}
+                          />
+                          <Text>{t("Non-Influential Share Only")}</Text>
+                        </Space>
+                        <Select
+                          style={{ minWidth: 280 }}
+                          placeholder={t("Select shares")}
+                          showSearch
+                          optionFilterProp="label"
+                          value={nominationVoterShareholderId || undefined}
+                          onChange={handleNominationVoterChange}
+                          options={nominationVoterOptions.map((s) => ({
+                            value: s.id,
+                            label: `${s.fullNameEn} (${formatNumber(s.shares)} shares)`,
+                          }))}
+                        />
+                      </Space>
                       <Select
                         style={{ minWidth: 280 }}
                         placeholder="Select nominee shareholder"
@@ -1377,7 +1453,8 @@ function App() {
                       </Button>
                     </Space>
                     <Text type="secondary">
-                      Eligible nomination voters remaining: {candidateNominationEligibleVoters.data?.length ?? 0}
+                      Eligible nomination voters remaining: {formatNumber(nominationVoterOptions.length)} /{" "}
+                      {formatNumber(candidateNominationEligibleVoters.data?.length ?? 0)}
                     </Text>
                   </Space>
                 </Card>
@@ -1658,12 +1735,18 @@ function App() {
                     <Text type="secondary">
                       Only shareholders with approved attendance are eligible to vote and appear in the voter dropdown.
                     </Text>
+                    {nonInfluentialVotingOnly && (
+                      <Text type="secondary">
+                        Non-influential mode is on: only the shares (voter) list hides influential shareholders. Candidates are unchanged.
+                      </Text>
+                    )}
                     <Text type="secondary">
-                      Eligible voters: {formatNumber(eligibleVoters.length)} / {formatNumber(shareholders.data?.length ?? 0)}
+                      Eligible voting shares: {formatNumber(votingShareholderOptions.length)} /{" "}
+                      {formatNumber(attendedVotingShareholders.length)} attended
                     </Text>
                   </Space>
                 </Card>
-                <Space wrap style={{ marginBottom: 16 }}>
+                <Space wrap style={{ marginBottom: 16, marginLeft: 16 }}>
                   {isSuperAdmin && (
                     <>
                       <Button icon={<IconFileTypeCsv size={16} />} onClick={() => downloadFile(token, "/reports/votes?format=csv", "voting-report.csv")}>{t("Export CSV")}</Button>
@@ -1672,16 +1755,22 @@ function App() {
                     </>
                   )}
                 </Space>
-                <Space wrap style={{ marginBottom: 16 }}>
-                  <Select
-                    style={{ minWidth: 320 }}
-                    placeholder={t("Select shareholder")}
-                    showSearch
-                    optionFilterProp="label"
-                    value={selectedShareholder || undefined}
-                    onChange={handleVoteVoterChange}
-                    options={eligibleVoters.map((s) => ({ value: s.id, label: s.fullNameEn }))}
-                  />
+                <Space wrap style={{ marginBottom: 16 }} align="start">
+                  <Space direction="vertical" size={8}>
+                    <Space align="center">
+                      <Switch checked={nonInfluentialVotingOnly} onChange={handleNonInfluentialVotingToggle} />
+                      <Text>{t("Non-Influential Share Only")}</Text>
+                    </Space>
+                    <Select
+                      style={{ minWidth: 320 }}
+                      placeholder={t("Select shares")}
+                      showSearch
+                      optionFilterProp="label"
+                      value={selectedShareholder || undefined}
+                      onChange={handleVoteVoterChange}
+                      options={votingShareholderOptions.map((s) => ({ value: s.id, label: s.fullNameEn }))}
+                    />
+                  </Space>
                   <Select
                     style={{ minWidth: 320 }}
                     placeholder={t("Select candidate")}
@@ -1689,7 +1778,10 @@ function App() {
                     optionFilterProp="label"
                     value={selectedCandidate || undefined}
                     onChange={setSelectedCandidate}
-                    options={selectableCandidates.map((candidate) => ({ value: candidate.id, label: `${candidate.name} (${candidate.position})` }))}
+                    options={votingCandidateOptions.map((candidate) => ({
+                      value: candidate.id,
+                      label: `${candidate.name} (${candidate.position})`,
+                    }))}
                   />
                   <Button type="primary" icon={<IconDatabaseImport size={16} />} onClick={() => encodeVoteMutation.mutate()} disabled={!selectedShareholder || !selectedCandidate || !canEncodeVote}>
                     Encode Vote

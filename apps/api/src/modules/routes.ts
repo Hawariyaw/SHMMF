@@ -42,6 +42,10 @@ function resolveInfluentialFlag(manualFlag: boolean | undefined, shares: number)
   return Boolean(manualFlag);
 }
 
+function isShareholderInfluential(isHighPower: boolean, shares: number): boolean {
+  return resolveInfluentialFlag(isHighPower, shares);
+}
+
 function normalizeText(value: string): string {
   return value.normalize("NFC").trim();
 }
@@ -474,7 +478,11 @@ export function registerRoutes(app: Express): void {
     requireRoles(["SUPER_ADMIN", "VOTE_ENCODER"]),
     (req: AuthenticatedRequest, res) => {
       const parsed = z
-        .object({ voterShareholderId: z.string(), nomineeShareholderId: z.string() })
+        .object({
+          voterShareholderId: z.string(),
+          nomineeShareholderId: z.string(),
+          nonInfluentialOnly: z.boolean().optional(),
+        })
         .safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
@@ -485,10 +493,17 @@ export function registerRoutes(app: Express): void {
         return;
       }
       const voter = db
-        .prepare("SELECT id, shares FROM shareholders WHERE id = ?")
-        .get(parsed.data.voterShareholderId) as { id: string; shares: number } | undefined;
+        .prepare("SELECT id, shares, is_high_power FROM shareholders WHERE id = ?")
+        .get(parsed.data.voterShareholderId) as { id: string; shares: number; is_high_power: number } | undefined;
       if (!voter) {
         res.status(404).json({ message: "Voter shareholder not found" });
+        return;
+      }
+      if (
+        parsed.data.nonInfluentialOnly &&
+        isShareholderInfluential(Boolean(voter.is_high_power), voter.shares)
+      ) {
+        res.status(400).json({ message: "Only non-influential shareholders can vote in this mode" });
         return;
       }
       const nominee = db
@@ -525,6 +540,7 @@ export function registerRoutes(app: Express): void {
           id: nominationId,
           voterShareholderId: parsed.data.voterShareholderId,
           nomineeShareholderId: parsed.data.nomineeShareholderId,
+          nonInfluentialOnly: parsed.data.nonInfluentialOnly ?? false,
           sharesUsed: voter.shares,
         },
         req,
@@ -633,7 +649,7 @@ export function registerRoutes(app: Express): void {
     }
   );
 
-  app.get("/api/v1/config", requireAuth, requireRoles(["SUPER_ADMIN"]), (_req, res) => {
+  app.get("/api/v1/config", requireAuth, requireRoles(["SUPER_ADMIN", "VOTE_ENCODER", "VOTE_CHECKER"]), (_req, res) => {
     res.json({
       attendanceMakerCheckerEnabled: configEnabled("attendanceMakerCheckerEnabled"),
       votingMakerCheckerEnabled: configEnabled("votingMakerCheckerEnabled"),
@@ -891,7 +907,11 @@ export function registerRoutes(app: Express): void {
     requireRoles(["SUPER_ADMIN", "VOTE_ENCODER"]),
     (req: AuthenticatedRequest, res) => {
       const parsed = z
-        .object({ shareholderId: z.string(), candidateId: z.string() })
+        .object({
+          shareholderId: z.string(),
+          candidateId: z.string(),
+          nonInfluentialOnly: z.boolean().optional(),
+        })
         .safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid payload" });
@@ -905,10 +925,17 @@ export function registerRoutes(app: Express): void {
         return;
       }
       const shareholder = db
-        .prepare("SELECT shares FROM shareholders WHERE id = ?")
-        .get(parsed.data.shareholderId) as { shares: number } | undefined;
+        .prepare("SELECT shares, is_high_power FROM shareholders WHERE id = ?")
+        .get(parsed.data.shareholderId) as { shares: number; is_high_power: number } | undefined;
       if (!shareholder) {
         res.status(404).json({ message: "Shareholder not found" });
+        return;
+      }
+      if (
+        parsed.data.nonInfluentialOnly &&
+        isShareholderInfluential(Boolean(shareholder.is_high_power), shareholder.shares)
+      ) {
+        res.status(400).json({ message: "Only non-influential shareholders can vote in this mode" });
         return;
       }
       if (candidate.shareholder_id && candidate.shareholder_id === parsed.data.shareholderId) {
@@ -952,6 +979,7 @@ export function registerRoutes(app: Express): void {
         newValue: {
           id,
           ...parsed.data,
+          nonInfluentialOnly: parsed.data.nonInfluentialOnly ?? false,
           sharesUsed: shareholder.shares,
           status,
           makerUserId: req.user?.id,
